@@ -1,4 +1,14 @@
+import { useState } from 'react'
+
 function App() {
+  const [emailCopied, setEmailCopied] = useState(false)
+
+  function copyEmail() {
+    navigator.clipboard.writeText('jwilkes@mba2027.hbs.edu')
+    setEmailCopied(true)
+    setTimeout(() => setEmailCopied(false), 2000)
+  }
+
   return (
     <div className="min-h-screen bg-white flex flex-col">
 
@@ -43,14 +53,19 @@ function App() {
                 GitHub
               </a>
             </li>
-            <li>
-              <a
-                href="mailto:jwilkes@mba2027.hbs.edu"
-                className="flex items-center gap-2.5 px-4 py-3 rounded-lg border border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-colors text-slate-700 font-medium text-sm"
+            <li className="relative">
+              <button
+                onClick={copyEmail}
+                className="flex items-center gap-2.5 px-4 py-3 rounded-lg border border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-colors text-slate-700 font-medium text-sm cursor-pointer"
               >
                 <EmailIcon />
                 Email
-              </a>
+              </button>
+              {emailCopied && (
+                <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-xs text-slate-500 whitespace-nowrap">
+                  Email copied to clipboard
+                </span>
+              )}
             </li>
           </ul>
         </section>
