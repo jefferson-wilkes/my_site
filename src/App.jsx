@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Game from './Game.jsx'
 
 function App() {
   const [emailCopied, setEmailCopied] = useState(false)
@@ -72,10 +73,8 @@ function App() {
 
         {/* Game */}
         <section>
-          <h2 className="text-lg font-semibold text-slate-800 mb-4">Game</h2>
-          <div className="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center h-64 text-slate-400 text-sm">
-            Game coming soon
-          </div>
+          <h2 className="text-lg font-semibold text-slate-800 mb-4">🐱 Laser Cat!</h2>
+          <Game />
         </section>
 
       </main>
