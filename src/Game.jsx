@@ -61,10 +61,11 @@ class GameScene extends Phaser.Scene {
       color: '#ff4dff', stroke: '#000', strokeThickness: 3,
     }).setDepth(10)
 
-    this.livesLeft = 5
-    this.livesTxt = this.add.text(W - 10, 10, '❤️❤️❤️❤️❤️', {
-      fontSize: '16px',
-    }).setOrigin(1, 0).setDepth(10)
+    this.timeLeft = 60
+    this.timerTxt = this.add.text(W / 2, 10, '60', {
+      fontSize: '18px', fontFamily: 'Courier New',
+      color: '#ffffff', stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5, 0).setDepth(10)
 
     this.laser = this.add.container(W / 2, H / 2)
     const glow = this.add.image(0, 0, 'glow').setBlendMode('ADD')
@@ -102,6 +103,20 @@ class GameScene extends Phaser.Scene {
 
     this.cat.setDepth(4)
 
+    // AI state machine
+    this.catState = 'WATCHING'
+    this.stateTimer = Phaser.Math.FloatBetween(0.8, 1.8)
+    this.noiseTime = 0
+    this.laserHistory = []
+    this.stalkWaypoint = { x: this.cat.x, y: this.cat.y }
+    this.stalkMoving = true
+    this.stalkMoveTimer = 0
+    this.stalkPauseTimer = 0
+    this.pounceOrigin = { x: 0, y: 0 }
+    this.pounceTarget = { x: 0, y: 0 }
+    this.pounceProgress = 0
+    this.pounceArcDir = 1
+
     this.items = this.add.group()
     this.itemLabels = []
 
@@ -135,7 +150,7 @@ class GameScene extends Phaser.Scene {
 
     const hitbox = this.add.rectangle(x, -20, 36, 36, 0xffffff, 0)
     hitbox.pts = item.pts
-    hitbox.speed = Phaser.Math.FloatBetween(1.5, 3.5)
+    hitbox.speed = Phaser.Math.FloatBetween(1.0, 2.33)
     this.items.add(hitbox)
 
     const lbl = this.add.text(x, -20, item.emoji, { fontSize: '30px' }).setOrigin(0.5)
@@ -157,7 +172,7 @@ class GameScene extends Phaser.Scene {
     })
   }
 
-  update() {
+  update(time, delta) {
     if (this.gameOver) return
 
     const speed = this.laserSpeed
@@ -171,6 +186,12 @@ class GameScene extends Phaser.Scene {
     this.laser.x = Phaser.Math.Clamp(this.laser.x + dx, 10, W - 10)
     this.laser.y = Phaser.Math.Clamp(this.laser.y + dy, 10, H - 10)
 
+    this.timeLeft -= delta / 1000
+    const secsLeft = Math.ceil(Math.max(0, this.timeLeft))
+    this.timerTxt.setText(secsLeft)
+    this.timerTxt.setColor(secsLeft <= 10 ? '#ff4444' : '#ffffff')
+    if (this.timeLeft <= 0) { this.endGame(); return }
+
     for (let i = this.trail.length - 1; i > 0; i--) {
       this.trail[i].x = this.trail[i - 1].x
       this.trail[i].y = this.trail[i - 1].y
@@ -178,22 +199,7 @@ class GameScene extends Phaser.Scene {
     this.trail[0].x = this.laser.x
     this.trail[0].y = this.laser.y
 
-    const lx = this.laser.x, ly = this.laser.y
-    const cx = this.cat.x, cy = this.cat.y
-    const dist = Phaser.Math.Distance.Between(cx, cy, lx, ly)
-
-    if (dist > 10) {
-      const t = 0.06
-      this.cat.x += (lx - cx) * t
-      this.cat.y += (ly - cy) * t
-      this.cat.scaleX = lx < cx ? -1 : 1
-    }
-
-    this.cat.y = Math.min(this.cat.y, H - 50)
-
-    if (this.faceMaskGfx) {
-      this.faceMaskGfx.setPosition(this.cat.x, this.cat.y)
-    }
+    this.updateCat(delta)
 
     const toRemove = []
     this.itemLabels.forEach((lbl, idx) => {
@@ -217,15 +223,137 @@ class GameScene extends Phaser.Scene {
         lbl.destroy()
         hb.destroy()
         toRemove.push(idx)
-        this.livesLeft--
-        this.livesTxt.setText('❤️'.repeat(Math.max(0, this.livesLeft)))
-        if (this.livesLeft <= 0) this.endGame()
+        // no lives — timer is the only end condition
       }
     })
 
     for (let i = toRemove.length - 1; i >= 0; i--) {
       this.itemLabels.splice(toRemove[i], 1)
     }
+  }
+
+  updateCat(delta) {
+    const dt = delta / 1000
+    const lx = this.laser.x, ly = this.laser.y
+
+    // Rolling 1.5s history of laser positions (used for committed pounce target)
+    this.laserHistory.push({ x: lx, y: ly })
+    if (this.laserHistory.length > 90) this.laserHistory.shift()
+
+    this.noiseTime += dt
+
+    if (this.catState === 'WATCHING') {
+      this.stateTimer -= dt
+      // Fidget in place — subtle sine-wave jitter so it looks alive
+      this.cat.x += Math.sin(this.noiseTime * 3.7) * 5 * dt
+      this.cat.y += Math.sin(this.noiseTime * 2.3 + 1.4) * 5 * dt
+      // Track laser with gaze (just the flip)
+      this.cat.scaleX = lx < this.cat.x ? -1 : 1
+      if (this.stateTimer <= 0) this._enterStalking(lx, ly)
+
+    } else if (this.catState === 'STALKING') {
+      this.stateTimer -= dt
+
+      if (this.stalkMoving) {
+        this.stalkMoveTimer -= dt
+        const dx = this.stalkWaypoint.x - this.cat.x
+        const dy = this.stalkWaypoint.y - this.cat.y
+        const d = Math.sqrt(dx * dx + dy * dy)
+        if (d > 6) {
+          const speed = 75 // px/s — deliberate creep
+          this.cat.x += (dx / d) * speed * dt
+          this.cat.y += (dy / d) * speed * dt
+          this.cat.scaleX = dx < 0 ? -1 : 1
+        }
+        if (this.stalkMoveTimer <= 0 || d < 6) {
+          // Freeze — then pick a new offset waypoint
+          this.stalkMoving = false
+          this.stalkPauseTimer = Phaser.Math.FloatBetween(0.2, 0.7)
+          this._updateStalkWaypoint(lx, ly)
+        }
+      } else {
+        this.stalkPauseTimer -= dt
+        if (this.stalkPauseTimer <= 0) {
+          this.stalkMoving = true
+          this.stalkMoveTimer = Phaser.Math.FloatBetween(0.5, 1.5)
+        }
+      }
+
+      const distToLaser = Phaser.Math.Distance.Between(this.cat.x, this.cat.y, lx, ly)
+      if (distToLaser < 180 || this.stateTimer <= 0) this._enterPouncing()
+
+    } else if (this.catState === 'POUNCING') {
+      this.pounceProgress = Math.min(1, this.pounceProgress + 3.2 * dt)
+
+      // Ease-out: fast launch, decelerates on landing
+      const ease = 1 - Math.pow(1 - this.pounceProgress, 2)
+      const baseX = this.pounceOrigin.x + (this.pounceTarget.x - this.pounceOrigin.x) * ease
+      const baseY = this.pounceOrigin.y + (this.pounceTarget.y - this.pounceOrigin.y) * ease
+
+      // Arc perpendicular to the pounce direction
+      const pdx = this.pounceTarget.x - this.pounceOrigin.x
+      const pdy = this.pounceTarget.y - this.pounceOrigin.y
+      const plen = Math.sqrt(pdx * pdx + pdy * pdy)
+      if (plen > 1) {
+        const arcAmt = Math.sin(this.pounceProgress * Math.PI) * Math.min(plen * 0.18, 45) * this.pounceArcDir
+        this.cat.x = baseX + (-pdy / plen) * arcAmt
+        this.cat.y = baseY + (pdx / plen) * arcAmt
+      } else {
+        this.cat.x = baseX
+        this.cat.y = baseY
+      }
+
+      if (this.pounceProgress >= 1) {
+        this.catState = 'WATCHING'
+        this.stateTimer = Phaser.Math.FloatBetween(1, 2.5)
+      }
+    }
+
+    this.cat.x = Phaser.Math.Clamp(this.cat.x, 20, W - 20)
+    this.cat.y = Phaser.Math.Clamp(this.cat.y, 30, H - 50)
+
+    if (this.faceMaskGfx) {
+      this.faceMaskGfx.setPosition(this.cat.x, this.cat.y)
+    }
+  }
+
+  _enterStalking(lx, ly) {
+    this.catState = 'STALKING'
+    this.stateTimer = Phaser.Math.FloatBetween(2, 4.5)
+    this.stalkMoving = true
+    this.stalkMoveTimer = Phaser.Math.FloatBetween(0.5, 1.2)
+    this._updateStalkWaypoint(lx, ly)
+  }
+
+  _updateStalkWaypoint(lx, ly) {
+    // Aim for a point laterally offset from the laser rather than straight at it —
+    // this produces the circling, indirect approach cats use before striking.
+    const angle = Math.atan2(ly - this.cat.y, lx - this.cat.x)
+    const side = Math.random() > 0.5 ? 1 : -1
+    const deviation = Phaser.Math.FloatBetween(0.4, 1.1) // 23–63° off the direct line
+    const approachAngle = angle + side * deviation
+    const dist = Phaser.Math.FloatBetween(80, 160)
+    this.stalkWaypoint = {
+      x: Phaser.Math.Clamp(lx + Math.cos(approachAngle) * dist, 40, W - 40),
+      y: Phaser.Math.Clamp(ly + Math.sin(approachAngle) * dist, 40, H - 60),
+    }
+  }
+
+  _enterPouncing() {
+    this.catState = 'POUNCING'
+    // Commit to where the laser WAS ~0.5s ago — cats don't track mid-pounce
+    const cached = this.laserHistory[Math.max(0, this.laserHistory.length - 30)]
+    const dx = cached.x - this.cat.x
+    const dy = cached.y - this.cat.y
+    this.pounceOrigin = { x: this.cat.x, y: this.cat.y }
+    // Overshoot by 25% — the classic cat-skids-past-the-target moment
+    this.pounceTarget = {
+      x: Phaser.Math.Clamp(this.cat.x + dx * 1.25, 20, W - 20),
+      y: Phaser.Math.Clamp(this.cat.y + dy * 1.25, 20, H - 50),
+    }
+    this.pounceProgress = 0
+    this.pounceArcDir = Math.random() > 0.5 ? 1 : -1
+    this.cat.scaleX = dx < 0 ? -1 : 1
   }
 
   endGame() {
