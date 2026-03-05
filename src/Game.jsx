@@ -56,10 +56,17 @@ class GameScene extends Phaser.Scene {
     this.add.rectangle(W / 2, H - 10, W, 20, 0x1a1a3e)
 
     this.score = 0
+    this.highScore = parseInt(localStorage.getItem('laserChaseHighScore') ?? '0', 10)
+
     this.scoreTxt = this.add.text(10, 10, 'SCORE: 0', {
       fontSize: '18px', fontFamily: 'Courier New',
       color: '#ff4dff', stroke: '#000', strokeThickness: 3,
     }).setDepth(10)
+
+    this.highScoreTxt = this.add.text(W - 10, 10, 'BEST: ' + this.highScore, {
+      fontSize: '14px', fontFamily: 'Courier New',
+      color: '#9966cc', stroke: '#000', strokeThickness: 2,
+    }).setOrigin(1, 0).setDepth(10)
 
     this.timeLeft = 60
     this.timerTxt = this.add.text(W / 2, 10, '60', {
@@ -347,17 +354,35 @@ class GameScene extends Phaser.Scene {
   endGame() {
     this.gameOver = true
 
+    const isNewHigh = this.score > this.highScore
+    if (isNewHigh) {
+      this.highScore = this.score
+      localStorage.setItem('laserChaseHighScore', String(this.score))
+    }
+
     this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.7).setDepth(20)
 
-    this.add.text(W / 2, H / 2 - 60, 'GAME OVER', {
+    this.add.text(W / 2, H / 2 - 70, 'GAME OVER', {
       fontSize: '48px', fontFamily: 'Courier New',
       color: '#ff4dff', stroke: '#000', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(21)
 
-    this.add.text(W / 2, H / 2, 'SCORE: ' + this.score, {
+    this.add.text(W / 2, H / 2 - 15, 'SCORE: ' + this.score, {
       fontSize: '28px', fontFamily: 'Courier New',
       color: '#ffff00', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(21)
+
+    if (isNewHigh) {
+      this.add.text(W / 2, H / 2 + 22, '★ NEW HIGH SCORE ★', {
+        fontSize: '16px', fontFamily: 'Courier New',
+        color: '#ffdd00', stroke: '#000', strokeThickness: 2,
+      }).setOrigin(0.5).setDepth(21)
+    } else {
+      this.add.text(W / 2, H / 2 + 22, 'BEST: ' + this.highScore, {
+        fontSize: '16px', fontFamily: 'Courier New',
+        color: '#9966cc', stroke: '#000', strokeThickness: 2,
+      }).setOrigin(0.5).setDepth(21)
+    }
 
     const btn = this.add.text(W / 2, H / 2 + 70, '[ PLAY AGAIN ]', {
       fontSize: '22px', fontFamily: 'Courier New',
