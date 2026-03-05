@@ -148,7 +148,7 @@ class GameScene extends Phaser.Scene {
 
     const hitbox = this.add.rectangle(x, -20, 36, 36, 0xffffff, 0)
     hitbox.pts = item.pts
-    hitbox.speed = Phaser.Math.FloatBetween(1.0, 2.33)
+    hitbox.speed = Phaser.Math.FloatBetween(0.8, 1.9)
     this.items.add(hitbox)
 
     const lbl = this.add.text(x, -20, item.emoji, { fontSize: '30px' }).setOrigin(0.5)
@@ -248,7 +248,7 @@ class GameScene extends Phaser.Scene {
         const dy = this.stalkWaypoint.y - this.cat.y
         const d = Math.sqrt(dx * dx + dy * dy)
         if (d > 6) {
-          const speed = 75 // px/s — deliberate creep
+          const speed = 58 // px/s — deliberate creep
           this.cat.x += (dx / d) * speed * dt
           this.cat.y += (dy / d) * speed * dt
           this.cat.scaleX = dx < 0 ? -1 : 1
