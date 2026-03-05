@@ -127,19 +127,17 @@ class GameScene extends Phaser.Scene {
       loop: true,
     })
 
-    this.cursors = this.input.keyboard.createCursorKeys()
-    this.numpad = this.input.keyboard.addKeys({
-      up: Phaser.Input.Keyboard.KeyCodes.NUMPAD_EIGHT,
-      down: Phaser.Input.Keyboard.KeyCodes.NUMPAD_TWO,
-      left: Phaser.Input.Keyboard.KeyCodes.NUMPAD_FOUR,
-      right: Phaser.Input.Keyboard.KeyCodes.NUMPAD_SIX,
-      upleft: Phaser.Input.Keyboard.KeyCodes.NUMPAD_SEVEN,
-      upright: Phaser.Input.Keyboard.KeyCodes.NUMPAD_NINE,
-      downleft: Phaser.Input.Keyboard.KeyCodes.NUMPAD_ONE,
-      downright: Phaser.Input.Keyboard.KeyCodes.NUMPAD_THREE,
+    this.input.on('pointermove', (ptr) => {
+      if (this.gameOver) return
+      this.laser.x = Phaser.Math.Clamp(ptr.x, 10, W - 10)
+      this.laser.y = Phaser.Math.Clamp(ptr.y, 10, H - 10)
+    })
+    this.input.on('pointerdown', (ptr) => {
+      if (this.gameOver) return
+      this.laser.x = Phaser.Math.Clamp(ptr.x, 10, W - 10)
+      this.laser.y = Phaser.Math.Clamp(ptr.y, 10, H - 10)
     })
 
-    this.laserSpeed = 5
     this.gameOver = false
   }
 
@@ -175,16 +173,6 @@ class GameScene extends Phaser.Scene {
   update(time, delta) {
     if (this.gameOver) return
 
-    const speed = this.laserSpeed
-    let dx = 0, dy = 0
-
-    if (this.cursors.left.isDown || this.numpad.left.isDown || this.numpad.upleft.isDown || this.numpad.downleft.isDown) dx -= speed
-    if (this.cursors.right.isDown || this.numpad.right.isDown || this.numpad.upright.isDown || this.numpad.downright.isDown) dx += speed
-    if (this.cursors.up.isDown || this.numpad.up.isDown || this.numpad.upleft.isDown || this.numpad.upright.isDown) dy -= speed
-    if (this.cursors.down.isDown || this.numpad.down.isDown || this.numpad.downleft.isDown || this.numpad.downright.isDown) dy += speed
-
-    this.laser.x = Phaser.Math.Clamp(this.laser.x + dx, 10, W - 10)
-    this.laser.y = Phaser.Math.Clamp(this.laser.y + dy, 10, H - 10)
 
     this.timeLeft -= delta / 1000
     const secsLeft = Math.ceil(Math.max(0, this.timeLeft))
@@ -397,6 +385,10 @@ function GameCanvas({ onChangeCharacter }) {
       parent: containerRef.current,
       scene: GameScene,
       audio: { noAudio: true },
+      scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+      },
     })
     return () => game.destroy(true)
   }, [])
@@ -405,7 +397,7 @@ function GameCanvas({ onChangeCharacter }) {
     <div>
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs text-slate-400 font-mono tracking-wide">
-          ARROW KEYS to move laser · Collect items!
+          Touch or drag to move laser · Collect items!
         </p>
         <button
           onClick={onChangeCharacter}
@@ -414,18 +406,18 @@ function GameCanvas({ onChangeCharacter }) {
           ↩ Change character
         </button>
       </div>
-      <div className="overflow-x-auto">
-        <div
-          ref={containerRef}
-          style={{
-            border: '2px solid #ff4dff',
-            boxShadow: '0 0 30px #ff4dff44, inset 0 0 30px #ff4dff11',
-            borderRadius: '4px',
-            overflow: 'hidden',
-            display: 'inline-block',
-          }}
-        />
-      </div>
+      <div
+        ref={containerRef}
+        style={{
+          border: '2px solid #ff4dff',
+          boxShadow: '0 0 30px #ff4dff44, inset 0 0 30px #ff4dff11',
+          borderRadius: '4px',
+          overflow: 'hidden',
+          width: '100%',
+          maxWidth: `${W}px`,
+          touchAction: 'none',
+        }}
+      />
     </div>
   )
 }

@@ -15,15 +15,31 @@ function App() {
 
       {/* Hero */}
       <header className="bg-slate-900 text-white py-20 px-6 text-center">
-        <div className="w-32 h-32 rounded-full overflow-hidden mx-auto mb-6 ring-4 ring-slate-700">
-          <img
-            src="/profile.jpg"
-            alt="Jefferson Wilkes"
-            className="w-full h-full object-cover object-[50%_20%] scale-[1.5]"
-          />
+        <div className="flex items-center justify-center gap-4 mb-6">
+          <div className="w-24 h-24 rounded-full overflow-hidden ring-4 ring-slate-700">
+            <img
+              src="/cat-orange.jpg"
+              alt="Orange cat"
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div className="w-32 h-32 rounded-full overflow-hidden ring-4 ring-slate-700">
+            <img
+              src="/profile.jpg"
+              alt="Jefferson Wilkes"
+              className="w-full h-full object-cover object-[50%_20%] scale-[1.5]"
+            />
+          </div>
+          <div className="w-24 h-24 rounded-full overflow-hidden ring-4 ring-slate-700">
+            <img
+              src="/cat-black.jpg"
+              alt="Black cat"
+              className="w-full h-full object-cover"
+            />
+          </div>
         </div>
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight">Jefferson Wilkes</h1>
-        <p className="mt-3 text-lg text-slate-300">MBA Candidate at Harvard Business School</p>
+        <h1 className="text-4xl md:text-5xl font-bold tracking-tight">A Clash of Claws</h1>
+        <p className="mt-3 text-lg text-slate-300">A Website by Jefferson Wilkes</p>
       </header>
 
       <main className="flex-1 w-full max-w-2xl mx-auto px-6 py-14 space-y-14">
@@ -73,7 +89,7 @@ function App() {
 
         {/* Game */}
         <section>
-          <h2 className="text-lg font-semibold text-slate-800 mb-4">🐱 Laser Cat!</h2>
+          <h2 className="text-lg font-semibold text-slate-800 mb-4">Laser Chase</h2>
           <Game />
         </section>
 
