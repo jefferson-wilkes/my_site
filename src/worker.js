@@ -34,7 +34,7 @@ Player stats this game:
 - Average laser height: ${laserHeight}
 - Laser movement style: ${movement}
 
-Give 2-3 sentences of specific, actionable coaching advice. Focus on what they should do differently, not just what went wrong.`
+Give 2-3 sentences of encouraging, specific coaching advice on how they can improve. Be positive and use cat puns naturally — don't force every word, just weave a few in. Focus on what they should do more of, not just what went wrong.`
 
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
