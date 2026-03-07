@@ -473,6 +473,7 @@ function GameCanvas({ onChangeCharacter, onGameEnd }) {
           overflow: 'hidden',
           width: '100%',
           maxWidth: `${W}px`,
+          aspectRatio: `${W} / ${H}`,
           touchAction: 'none',
         }}
       />
@@ -539,14 +540,28 @@ export default function Game() {
     setGameStats(null)
   }
 
-  if (!character) {
-    return <CharacterSelect onStart={handleStart} />
-  }
-
   return (
-    <div>
-      <GameCanvas onChangeCharacter={handleChangeCharacter} onGameEnd={handleGameEnd} />
-      {gameStats && <HowDidIDo key={gameCount} stats={gameStats} />}
+    <div style={{ width: '100%', maxWidth: `${W}px`, margin: '0 auto' }}>
+      {!character
+        ? (
+          <div style={{
+            aspectRatio: `${W} / ${H}`,
+            border: '2px solid #ff4dff',
+            boxShadow: '0 0 30px #ff4dff44, inset 0 0 30px #ff4dff11',
+            borderRadius: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#0d0d2b',
+          }}>
+            <CharacterSelect onStart={handleStart} />
+          </div>
+        )
+        : <>
+            <GameCanvas onChangeCharacter={handleChangeCharacter} onGameEnd={handleGameEnd} />
+            {gameStats && <HowDidIDo key={gameCount} stats={gameStats} />}
+          </>
+      }
     </div>
   )
 }

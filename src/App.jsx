@@ -15,7 +15,7 @@ function App() {
 
       {/* Hero */}
       <header className="bg-slate-900 text-white py-12 px-6 text-center">
-        <h1 className="text-4xl md:text-5xl font-bold tracking-wide mb-6" style={{fontFamily: "'Playfair Display', serif"}}>A Clash of Claws</h1>
+        <h1 className="text-5xl md:text-7xl mb-6" style={{fontFamily: "'Fredoka', cursive", fontWeight: 400, letterSpacing: '0.15em', color: '#cc0000'}}>JW Games</h1>
         <div className="flex items-center justify-center gap-6">
           <div className="w-24 h-24 rounded-full overflow-hidden ring-2 ring-slate-600">
             <img src="/cat-orange.jpg" alt="Orange cat" className="w-full h-full object-cover" />
@@ -29,12 +29,13 @@ function App() {
 
       {/* Links bar */}
       <nav className="bg-white border-b border-slate-200">
-        <div className="max-w-2xl mx-auto px-6 py-3 flex items-center gap-1 relative">
+        <div className="max-w-2xl mx-auto px-6 py-3 flex items-center justify-center gap-1 relative">
           <a
             href="https://www.linkedin.com/in/wilkes-jefferson/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors text-sm font-medium"
+            className="flex items-center gap-2 px-4 py-2 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors text-sm font-medium"
+            style={{fontFamily: "'Fredoka', cursive", letterSpacing: '0.05em'}}
           >
             <LinkedInIcon />
             LinkedIn
@@ -43,20 +44,22 @@ function App() {
             href="https://github.com/jefferson-wilkes"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors text-sm font-medium"
+            className="flex items-center gap-2 px-4 py-2 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors text-sm font-medium"
+            style={{fontFamily: "'Fredoka', cursive", letterSpacing: '0.05em'}}
           >
             <GitHubIcon />
             GitHub
           </a>
           <button
             onClick={copyEmail}
-            className="flex items-center gap-2 px-4 py-2 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors text-sm font-medium cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors text-sm font-medium cursor-pointer"
+            style={{fontFamily: "'Fredoka', cursive", letterSpacing: '0.05em'}}
           >
             <EmailIcon />
             Email
           </button>
           {emailCopied && (
-            <span className="absolute left-1/2 -translate-x-1/2 bottom-[-1.6rem] text-xs text-slate-500 whitespace-nowrap">
+            <span className="absolute left-1/2 -translate-x-1/2 bottom-[-1.6rem] text-xs text-slate-400 whitespace-nowrap" style={{fontFamily: "'Fredoka', cursive"}}>
               Email copied to clipboard
             </span>
           )}
@@ -67,14 +70,14 @@ function App() {
 
         {/* Game */}
         <section>
-          <h2 className="text-xs font-semibold tracking-widest uppercase text-slate-400 mb-4">Laser Chase</h2>
+          <h2 className="text-xl font-medium tracking-widest uppercase mb-4 text-center" style={{fontFamily: "'Fredoka', cursive", color: '#cc0000', letterSpacing: '0.2em'}}>Laser Chase</h2>
           <Game />
         </section>
 
       </main>
 
-      <footer className="border-t border-slate-200 text-center text-xs text-slate-400 py-5 tracking-wide">
-        &copy; {new Date().getFullYear()} Jefferson Wilkes &nbsp;·&nbsp; v1.5.5
+      <footer className="border-t border-slate-200 text-center text-xs text-slate-400 py-5" style={{fontFamily: "'Fredoka', cursive", letterSpacing: '0.08em'}}>
+        &copy; {new Date().getFullYear()} Jefferson Wilkes &nbsp;·&nbsp; v1.6.0
       </footer>
 
     </div>
