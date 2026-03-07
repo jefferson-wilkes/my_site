@@ -74,7 +74,7 @@ function App() {
       </main>
 
       <footer className="border-t border-slate-200 text-center text-xs text-slate-400 py-5 tracking-wide">
-        &copy; {new Date().getFullYear()} Jefferson Wilkes &nbsp;·&nbsp; v1.5.2
+        &copy; {new Date().getFullYear()} Jefferson Wilkes &nbsp;·&nbsp; v1.5.3
       </footer>
 
     </div>
