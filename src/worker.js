@@ -6,27 +6,35 @@ export default {
       const { score, caught, missed, pounces, avgLaserY, avgSpeed } = await request.json()
 
       const laserHeight = avgLaserY > 320
-        ? 'low on screen — they were waiting for items to fall close before reacting'
+        ? 'too low — near the bottom of the screen, which means the cat barely has room to move and items are already past the sweet spot by the time the cat reaches them'
         : avgLaserY < 160
-        ? 'high on screen — they were anticipating items and moving early'
-        : 'mid-screen'
+        ? 'too high — near the top of the screen, far from where items land, so the cat has to travel a long distance to reach falling items and misses many of them'
+        : 'mid-screen, which is the optimal zone — close enough to intercept items without being too low to react'
 
       const movement = avgSpeed > 250
-        ? 'fast and erratic'
+        ? 'fast and erratic — moving the laser quickly and unpredictably'
         : avgSpeed < 100
-        ? 'slow and minimal — they barely moved'
+        ? 'very slow and minimal — barely moving the laser at all'
         : 'moderate and controlled'
 
-      const prompt = `A player just finished a 60-second game of Laser Chase. In the game, they move a laser dot to guide a cat toward falling items to collect points.
+      const prompt = `A player just finished a 60-second game of Laser Chase. Here is exactly how the game works:
 
-Stats:
+- Items (fish, yarn, etc.) fall from the top of the screen toward the bottom
+- The player moves a laser dot to guide a cat to intercept the falling items
+- The cat chases the laser — wherever the laser is, the cat tries to reach it
+- The optimal laser position is mid-screen (vertically): low enough that the cat is close to falling items, but high enough to have time to react to new spawns
+- Keeping the laser too high means the cat is far from items and misses them as they fall past
+- Keeping the laser too low means items have already fallen out of reach before the cat arrives
+- The cat also has an AI that watches, stalks, and pounces — it is always moving toward the laser
+
+Player stats this game:
 - Final score: ${score}
 - Items caught: ${caught}, items missed: ${missed}
-- The cat pounced ${pounces} times
-- Average laser position: ${laserHeight}
-- Movement style: ${movement}
+- The cat pounced ${pounces} times toward the laser
+- Average laser height: ${laserHeight}
+- Laser movement style: ${movement}
 
-Give 2-3 sentences of direct, practical coaching advice on how they can improve their score next game. Be specific and actionable.`
+Give 2-3 sentences of specific, actionable coaching advice. Focus on what they should do differently, not just what went wrong.`
 
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
