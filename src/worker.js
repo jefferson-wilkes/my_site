@@ -45,7 +45,7 @@ Give 2-3 sentences of encouraging, specific coaching advice on how they can impr
         },
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: 120,
+          max_tokens: 200,
           messages: [{ role: 'user', content: prompt }],
         }),
       })
