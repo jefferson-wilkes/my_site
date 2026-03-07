@@ -485,40 +485,30 @@ function GameCanvas({ onChangeCharacter, onGameEnd }) {
 function HowDidIDo({ stats }) {
   const [open, setOpen] = useState(false)
   const [advice, setAdvice] = useState(null)
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  async function handleToggle() {
-    if (open) { setOpen(false); return }
-    setOpen(true)
-    if (advice) return
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/cat-response', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(stats),
-      })
-      const data = await res.json()
-      setAdvice(data.text)
-    } catch {
-      setError('Could not load advice.')
-    }
-    setLoading(false)
-  }
+  useEffect(() => {
+    fetch('/api/cat-response', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(stats),
+    })
+      .then(res => res.json())
+      .then(data => setAdvice(data.text))
+      .catch(() => setError('Could not load advice.'))
+  }, [])
 
   return (
     <div className="mt-3">
       <button
-        onClick={handleToggle}
+        onClick={() => setOpen(o => !o)}
         className="text-xs text-slate-400 hover:text-slate-600 font-mono underline underline-offset-2 cursor-pointer"
       >
         {open ? '↑ Hide' : '💡 How did I do?'}
       </button>
       {open && (
         <p className="mt-2 text-sm text-slate-600 font-mono leading-relaxed">
-          {loading ? 'Analyzing your game…' : error ?? advice}
+          {error ?? advice ?? 'Analyzing your game…'}
         </p>
       )}
     </div>
