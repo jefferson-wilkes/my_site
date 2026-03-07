@@ -201,7 +201,7 @@ class GameScene extends Phaser.Scene {
       const hb = lbl.hitbox
       if (!hb || !hb.active) { toRemove.push(idx); return }
 
-      hb.y += hb.speed
+      hb.y += hb.speed * (delta / 1000) * 60
       lbl.x = hb.x
       lbl.y = hb.y
 
