@@ -70,7 +70,7 @@ class GameScene extends Phaser.Scene {
 
     this.scoreTxt = this.add.text(10, 10, 'SCORE: 0', {
       fontSize: '18px', fontFamily: 'Courier New',
-      color: '#ff4dff', stroke: '#000', strokeThickness: 3,
+      color: '#4ab0f0', stroke: '#000', strokeThickness: 3,
     }).setDepth(10)
 
     this.highScoreTxt = this.add.text(W - 10, 10, 'BEST: ' + this.highScore, {
@@ -396,7 +396,7 @@ class GameScene extends Phaser.Scene {
 
     this.add.text(W / 2, H / 2 - 70, 'GAME OVER', {
       fontSize: '48px', fontFamily: 'Courier New',
-      color: '#ff4dff', stroke: '#000', strokeThickness: 4,
+      color: '#4ab0f0', stroke: '#000', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(21)
 
     this.add.text(W / 2, H / 2 - 15, 'SCORE: ' + this.score, {
@@ -418,11 +418,11 @@ class GameScene extends Phaser.Scene {
 
     const btn = this.add.text(W / 2, H / 2 + 70, '[ PLAY AGAIN ]', {
       fontSize: '22px', fontFamily: 'Courier New',
-      color: '#ffffff', stroke: '#ff4dff', strokeThickness: 2,
-      backgroundColor: '#ff4dff33', padding: { x: 16, y: 8 },
+      color: '#ffffff', stroke: '#4ab0f0', strokeThickness: 2,
+      backgroundColor: '#4ab0f033', padding: { x: 16, y: 8 },
     }).setOrigin(0.5).setDepth(21).setInteractive({ useHandCursor: true })
 
-    btn.on('pointerover', () => btn.setColor('#ff4dff'))
+    btn.on('pointerover', () => btn.setColor('#4ab0f0'))
     btn.on('pointerout', () => btn.setColor('#ffffff'))
     btn.on('pointerdown', () => this.scene.restart())
   }
@@ -467,8 +467,8 @@ function GameCanvas({ onChangeCharacter, onGameEnd }) {
       <div
         ref={containerRef}
         style={{
-          border: '2px solid #ff4dff',
-          boxShadow: '0 0 30px #ff4dff44, inset 0 0 30px #ff4dff11',
+          border: '2px solid #22c55e',
+          boxShadow: '0 0 30px #22c55e44, inset 0 0 30px #22c55e11',
           borderRadius: '4px',
           overflow: 'hidden',
           width: '100%',
@@ -546,8 +546,8 @@ export default function Game() {
         ? (
           <div style={{
             aspectRatio: `${W} / ${H}`,
-            border: '2px solid #ff4dff',
-            boxShadow: '0 0 30px #ff4dff44, inset 0 0 30px #ff4dff11',
+            border: '2px solid #4ab0f0',
+            boxShadow: '0 0 30px #4ab0f044, inset 0 0 30px #4ab0f011',
             borderRadius: '4px',
             display: 'flex',
             alignItems: 'center',

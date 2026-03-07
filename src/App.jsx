@@ -14,21 +14,27 @@ function App() {
     <div className="min-h-screen bg-slate-50 flex flex-col">
 
       {/* Hero */}
-      <header className="bg-slate-900 text-white py-12 px-6 text-center">
-        <h1 className="text-5xl md:text-7xl mb-6" style={{fontFamily: "'Fredoka', cursive", fontWeight: 400, letterSpacing: '0.15em', color: '#cc0000'}}>JW Games</h1>
+      <header className="bg-slate-900 text-white py-12 px-6 text-center" style={{borderBottom: '2px solid #22c55e'}}>
         <div className="flex items-center justify-center gap-6">
-          <div className="w-24 h-24 rounded-full overflow-hidden ring-2 ring-slate-600">
+          <div className="w-36 h-36 rounded-full overflow-hidden ring-2 ring-slate-600" style={{opacity: 0.7}}>
             <img src="/cat-orange.jpg" alt="Orange cat" className="w-full h-full object-cover" />
           </div>
-          <img src="/claws.png" alt="Crossed claws" className="w-16 h-16" />
-          <div className="w-24 h-24 rounded-full overflow-hidden ring-2 ring-slate-600">
+          <h1 className="flex items-center justify-center gap-3 text-5xl md:text-7xl" style={{fontFamily: "'Fredoka', cursive", fontWeight: 400, letterSpacing: '0.15em', color: '#22c55e'}}>
+            <span className="flex items-center gap-1">JW
+              <svg width="16" height="36" viewBox="0 0 20 40" aria-hidden="true">
+                <polygon points="10,0 20,20 10,40 0,20" fill="#cc0000" />
+              </svg>
+            </span>
+            Games
+          </h1>
+          <div className="w-36 h-36 rounded-full overflow-hidden ring-2 ring-slate-600" style={{opacity: 0.7}}>
             <img src="/cat-black.jpg" alt="Black cat" className="w-full h-full object-cover" />
           </div>
         </div>
       </header>
 
       {/* Links bar */}
-      <nav className="bg-white border-b border-slate-200">
+      <nav className="bg-slate-100 border-b border-slate-200">
         <div className="max-w-2xl mx-auto px-6 py-3 flex items-center justify-center gap-1 relative">
           <a
             href="https://www.linkedin.com/in/wilkes-jefferson/"
@@ -77,7 +83,7 @@ function App() {
       </main>
 
       <footer className="border-t border-slate-200 text-center text-xs text-slate-400 py-5" style={{fontFamily: "'Fredoka', cursive", letterSpacing: '0.08em'}}>
-        &copy; {new Date().getFullYear()} Jefferson Wilkes &nbsp;·&nbsp; v1.6.0
+        &copy; {new Date().getFullYear()} Jefferson Wilkes &nbsp;·&nbsp; v1.7.0
       </footer>
 
     </div>
