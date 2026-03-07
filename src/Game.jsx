@@ -64,8 +64,8 @@ class GameScene extends Phaser.Scene {
     }).setDepth(10)
 
     this.highScoreTxt = this.add.text(W - 10, 10, 'BEST: ' + this.highScore, {
-      fontSize: '14px', fontFamily: 'Courier New',
-      color: '#9966cc', stroke: '#000', strokeThickness: 2,
+      fontSize: '18px', fontFamily: 'Courier New',
+      color: '#9966cc', stroke: '#000', strokeThickness: 3,
     }).setOrigin(1, 0).setDepth(10)
 
     this.timeLeft = 60
