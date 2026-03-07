@@ -16,6 +16,7 @@ const ITEMS = [
 
 // Bridge between React state and the Phaser scene (set before game is created)
 let activeCharacter = null
+let onGameEndCallback = null
 
 class GameScene extends Phaser.Scene {
   constructor() { super('Game') }
@@ -57,6 +58,15 @@ class GameScene extends Phaser.Scene {
 
     this.score = 0
     this.highScore = parseInt(localStorage.getItem('laserChaseHighScore') ?? '0', 10)
+
+    this.caught = 0
+    this.missed = 0
+    this.pounces = 0
+    this.laserYSum = 0
+    this.laserFrames = 0
+    this.totalLaserDist = 0
+    this.prevLaserX = W / 2
+    this.prevLaserY = H / 2
 
     this.scoreTxt = this.add.text(10, 10, 'SCORE: 0', {
       fontSize: '18px', fontFamily: 'Courier New',
@@ -187,6 +197,14 @@ class GameScene extends Phaser.Scene {
     this.timerTxt.setColor(secsLeft <= 10 ? '#ff4444' : '#ffffff')
     if (this.timeLeft <= 0) { this.endGame(); return }
 
+    const ldx = this.laser.x - this.prevLaserX
+    const ldy = this.laser.y - this.prevLaserY
+    this.totalLaserDist += Math.sqrt(ldx * ldx + ldy * ldy)
+    this.prevLaserX = this.laser.x
+    this.prevLaserY = this.laser.y
+    this.laserYSum += this.laser.y
+    this.laserFrames++
+
     for (let i = this.trail.length - 1; i > 0; i--) {
       this.trail[i].x = this.trail[i - 1].x
       this.trail[i].y = this.trail[i - 1].y
@@ -208,6 +226,7 @@ class GameScene extends Phaser.Scene {
       const catDist = Phaser.Math.Distance.Between(this.cat.x, this.cat.y, hb.x, hb.y)
       if (catDist < 35) {
         this.addScore(hb.pts, hb.x, hb.y)
+        this.caught++
         lbl.destroy()
         hb.destroy()
         toRemove.push(idx)
@@ -215,6 +234,7 @@ class GameScene extends Phaser.Scene {
       }
 
       if (hb.y > H + 30) {
+        this.missed++
         lbl.destroy()
         hb.destroy()
         toRemove.push(idx)
@@ -336,6 +356,7 @@ class GameScene extends Phaser.Scene {
 
   _enterPouncing() {
     this.catState = 'POUNCING'
+    this.pounces++
     // Commit to where the laser WAS ~0.5s ago — cats don't track mid-pounce
     const cached = this.laserHistory[Math.max(0, this.laserHistory.length - 30)]
     const dx = cached.x - this.cat.x
@@ -353,6 +374,17 @@ class GameScene extends Phaser.Scene {
 
   endGame() {
     this.gameOver = true
+
+    if (onGameEndCallback) {
+      onGameEndCallback({
+        score: this.score,
+        caught: this.caught,
+        missed: this.missed,
+        pounces: this.pounces,
+        avgLaserY: this.laserFrames > 0 ? Math.round(this.laserYSum / this.laserFrames) : H / 2,
+        avgSpeed: this.laserFrames > 0 ? Math.round((this.totalLaserDist / this.laserFrames) * 60) : 0,
+      })
+    }
 
     const isNewHigh = this.score > this.highScore
     if (isNewHigh) {
@@ -398,10 +430,11 @@ class GameScene extends Phaser.Scene {
 
 // ── GameCanvas ────────────────────────────────────────────────────────────────
 
-function GameCanvas({ onChangeCharacter }) {
+function GameCanvas({ onChangeCharacter, onGameEnd }) {
   const containerRef = useRef(null)
 
   useEffect(() => {
+    onGameEndCallback = onGameEnd
     const game = new Phaser.Game({
       type: Phaser.AUTO,
       width: W,
@@ -415,7 +448,7 @@ function GameCanvas({ onChangeCharacter }) {
         autoCenter: Phaser.Scale.CENTER_BOTH,
       },
     })
-    return () => game.destroy(true)
+    return () => { onGameEndCallback = null; game.destroy(true) }
   }, [])
 
   return (
@@ -447,24 +480,83 @@ function GameCanvas({ onChangeCharacter }) {
   )
 }
 
+// ── HowDidIDo ─────────────────────────────────────────────────────────────────
+
+function HowDidIDo({ stats }) {
+  const [open, setOpen] = useState(false)
+  const [advice, setAdvice] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function handleToggle() {
+    if (open) { setOpen(false); return }
+    setOpen(true)
+    if (advice) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/cat-response', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(stats),
+      })
+      const data = await res.json()
+      setAdvice(data.text)
+    } catch {
+      setError('Could not load advice.')
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="mt-3">
+      <button
+        onClick={handleToggle}
+        className="text-xs text-slate-400 hover:text-slate-600 font-mono underline underline-offset-2 cursor-pointer"
+      >
+        {open ? '↑ Hide' : '💡 How did I do?'}
+      </button>
+      {open && (
+        <p className="mt-2 text-sm text-slate-600 font-mono leading-relaxed">
+          {loading ? 'Analyzing your game…' : error ?? advice}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ── Game (main export) ────────────────────────────────────────────────────────
 
 export default function Game() {
   const [character, setCharacter] = useState(null)
+  const [gameStats, setGameStats] = useState(null)
+  const [gameCount, setGameCount] = useState(0)
 
   function handleStart(char) {
     activeCharacter = char
+    setGameStats(null)
     setCharacter(char)
+  }
+
+  function handleGameEnd(stats) {
+    setGameStats(stats)
+    setGameCount(c => c + 1)
   }
 
   function handleChangeCharacter() {
     activeCharacter = null
     setCharacter(null)
+    setGameStats(null)
   }
 
   if (!character) {
     return <CharacterSelect onStart={handleStart} />
   }
 
-  return <GameCanvas onChangeCharacter={handleChangeCharacter} />
+  return (
+    <div>
+      <GameCanvas onChangeCharacter={handleChangeCharacter} onGameEnd={handleGameEnd} />
+      {gameStats && <HowDidIDo key={gameCount} stats={gameStats} />}
+    </div>
+  )
 }
