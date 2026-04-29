@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Game from './Game.jsx'
+import LevelGame from './LevelGame.jsx'
 import Auth from './Auth.jsx'
 import Profile from './Profile.jsx'
 import Leaderboard from './Leaderboard.jsx'
@@ -106,9 +107,10 @@ function AppInner() {
                 marginBottom: '20px',
               }}>
                 {[
-                  { id: 'play', label: '▶ Play' },
-                  { id: 'profile', label: '👤 Profile' },
-                  { id: 'leaderboard', label: '★ Leaderboard' },
+                  { id: 'play',        label: '▶ Free Play'   },
+                  { id: 'levels',      label: '★ Levels'       },
+                  { id: 'profile',     label: '👤 Profile'     },
+                  { id: 'leaderboard', label: '◈ Leaderboard' },
                 ].map(t => (
                   <button
                     key={t.id}
@@ -150,7 +152,8 @@ function AppInner() {
                 </button>
               </div>
 
-              {tab === 'play' && <Game />}
+              {tab === 'play'   && <Game />}
+              {tab === 'levels' && <LevelGame />}
               {tab === 'profile' && (
                 <div style={{
                   background: '#0d0d2b', border: '1px solid #2a2a55',
