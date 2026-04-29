@@ -65,9 +65,49 @@ function err(msg, status = 400) {
   return json({ error: msg }, status)
 }
 
+// Splits on first '=' only so JWT values containing '=' padding are preserved.
+function parseCookies(header) {
+  const cookies = {}
+  for (const part of (header ?? '').split(';')) {
+    const idx = part.indexOf('=')
+    if (idx < 0) continue
+    cookies[part.slice(0, idx).trim()] = part.slice(idx + 1).trim()
+  }
+  return cookies
+}
+
+function withSecurityHeaders(response, isLocalDev) {
+  const headers = new Headers(response.headers)
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: blob:",
+    "connect-src 'self'",
+    "worker-src blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "upgrade-insecure-requests",
+  ].join('; ')
+  if (isLocalDev) {
+    headers.set('Content-Security-Policy-Report-Only', csp)
+  } else {
+    headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    headers.set('Content-Security-Policy', csp)
+  }
+  headers.set('X-Frame-Options', 'DENY')
+  headers.set('X-Content-Type-Options', 'nosniff')
+  headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+  headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()')
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+}
+
 async function getUser(request, env) {
-  const auth = request.headers.get('Authorization') ?? ''
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
+  const cookies = parseCookies(request.headers.get('Cookie'))
+  const token = cookies['lc_session']
   if (!token) return null
   try {
     return await verifyJWT(token, env.JWT_SECRET)
@@ -81,199 +121,231 @@ async function getUser(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
-    const path = url.pathname
-    const method = request.method
+    const isLocalDev = url.hostname === 'localhost'
+    const response = await handle(request, env, url, isLocalDev)
+    return withSecurityHeaders(response, isLocalDev)
+  },
+}
 
-    // ── POST /api/register ────────────────────────────────────────────────────
-    if (path === '/api/register' && method === 'POST') {
-      const { username, password } = await request.json()
-      if (!username || !password) return err('username and password required')
-      if (username.length < 2 || username.length > 24) return err('username must be 2–24 characters')
-      if (!/^[a-zA-Z0-9_]+$/.test(username)) return err('username may only contain letters, numbers, and underscores')
-      if (password.length < 6) return err('password must be at least 6 characters')
+async function handle(request, env, url, isLocalDev) {
+  const path = url.pathname
+  const method = request.method
 
-      const existing = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(username).first()
-      if (existing) return err('username already taken', 409)
+  if (!isLocalDev && url.protocol === 'http:') {
+    return Response.redirect('https://' + url.host + url.pathname + url.search, 301)
+  }
 
-      const id = uuid()
-      const password_hash = await hashPassword(password)
-      await env.DB.prepare(
-        'INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)'
-      ).bind(id, username, password_hash, Math.floor(Date.now() / 1000)).run()
+  // ── POST /api/register ──────────────────────────────────────────────────────
+  if (path === '/api/register' && method === 'POST') {
+    const { username, password } = await request.json()
+    if (!username || !password) return err('username and password required')
+    if (username.length < 2 || username.length > 24) return err('username must be 2–24 characters')
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) return err('username may only contain letters, numbers, and underscores')
+    if (password.length < 6) return err('password must be at least 6 characters')
 
-      const token = await signJWT({ sub: id, username, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30 }, env.JWT_SECRET)
-      return json({ token, username })
-    }
+    const existing = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(username).first()
+    if (existing) return err('username already taken', 409)
 
-    // ── POST /api/login ───────────────────────────────────────────────────────
-    if (path === '/api/login' && method === 'POST') {
-      const { username, password } = await request.json()
-      if (!username || !password) return err('username and password required')
+    const id = uuid()
+    const password_hash = await hashPassword(password)
+    await env.DB.prepare(
+      'INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)'
+    ).bind(id, username, password_hash, Math.floor(Date.now() / 1000)).run()
 
-      const user = await env.DB.prepare('SELECT id, password_hash FROM users WHERE username = ?').bind(username).first()
-      if (!user) return err('invalid username or password', 401)
+    const token = await signJWT({ sub: id, username, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30 }, env.JWT_SECRET)
+    return new Response(JSON.stringify({ username }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Set-Cookie': `lc_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`,
+      },
+    })
+  }
 
-      const ok = await verifyPassword(password, user.password_hash)
-      if (!ok) return err('invalid username or password', 401)
+  // ── POST /api/login ─────────────────────────────────────────────────────────
+  if (path === '/api/login' && method === 'POST') {
+    const { username, password } = await request.json()
+    if (!username || !password) return err('username and password required')
 
-      const token = await signJWT({ sub: user.id, username, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30 }, env.JWT_SECRET)
-      return json({ token, username })
-    }
+    const user = await env.DB.prepare('SELECT id, password_hash FROM users WHERE username = ?').bind(username).first()
+    if (!user) return err('invalid username or password', 401)
 
-    // ── POST /api/game-session ────────────────────────────────────────────────
-    if (path === '/api/game-session' && method === 'POST') {
-      const user = await getUser(request, env)
-      if (!user) return err('unauthorized', 401)
+    const ok = await verifyPassword(password, user.password_hash)
+    if (!ok) return err('invalid username or password', 401)
 
-      const body = await request.json()
-      const { score, caught, missed, pounces, avgLaserY, avgSpeed, totalLaserDist,
-              movementFrequency, movementSmoothness, timeStationary } = body
+    const token = await signJWT({ sub: user.id, username, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30 }, env.JWT_SECRET)
+    return new Response(JSON.stringify({ username }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Set-Cookie': `lc_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`,
+      },
+    })
+  }
 
-      await env.DB.prepare(`
-        INSERT INTO game_sessions
-          (id, user_id, score, caught, missed, pounces,
-           avg_laser_y, avg_speed, total_laser_dist,
-           movement_frequency, movement_smoothness, time_stationary,
-           played_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        uuid(), user.sub, score, caught, missed, pounces,
-        avgLaserY, avgSpeed, totalLaserDist,
-        movementFrequency, movementSmoothness, timeStationary,
-        Math.floor(Date.now() / 1000)
-      ).run()
+  // ── POST /api/logout ────────────────────────────────────────────────────────
+  if (path === '/api/logout' && method === 'POST') {
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Set-Cookie': 'lc_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0',
+      },
+    })
+  }
 
-      return json({ ok: true })
-    }
+  // ── POST /api/game-session ──────────────────────────────────────────────────
+  if (path === '/api/game-session' && method === 'POST') {
+    const user = await getUser(request, env)
+    if (!user) return err('unauthorized', 401)
 
-    // ── GET /api/me ───────────────────────────────────────────────────────────
-    if (path === '/api/me' && method === 'GET') {
-      const user = await getUser(request, env)
-      if (!user) return err('unauthorized', 401)
+    const body = await request.json()
+    const { score, caught, missed, pounces, avgLaserY, avgSpeed, totalLaserDist,
+            movementFrequency, movementSmoothness, timeStationary } = body
 
-      const sessions = await env.DB.prepare(`
-        SELECT score, caught, missed, pounces,
-               avg_laser_y, avg_speed, total_laser_dist,
-               movement_frequency, movement_smoothness, time_stationary,
-               played_at
-        FROM game_sessions
-        WHERE user_id = ?
-        ORDER BY played_at DESC
-        LIMIT 50
-      `).bind(user.sub).all()
+    await env.DB.prepare(`
+      INSERT INTO game_sessions
+        (id, user_id, score, caught, missed, pounces,
+         avg_laser_y, avg_speed, total_laser_dist,
+         movement_frequency, movement_smoothness, time_stationary,
+         played_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      uuid(), user.sub, score, caught, missed, pounces,
+      avgLaserY, avgSpeed, totalLaserDist,
+      movementFrequency, movementSmoothness, timeStationary,
+      Math.floor(Date.now() / 1000)
+    ).run()
 
-      return json({ username: user.username, sessions: sessions.results })
-    }
+    return json({ ok: true })
+  }
 
-    // ── GET /api/leaderboard ──────────────────────────────────────────────────
-    if (path === '/api/leaderboard' && method === 'GET') {
-      // Best score per user
-      const top = await env.DB.prepare(`
-        SELECT u.username, MAX(g.score) as best_score,
-               COUNT(*) as games_played,
-               ROUND(AVG(g.score), 0) as avg_score,
-               ROUND(AVG(g.avg_laser_y), 1) as avg_laser_y,
-               ROUND(AVG(g.avg_speed), 1) as avg_speed,
-               ROUND(AVG(g.movement_frequency), 3) as movement_frequency,
-               ROUND(AVG(g.movement_smoothness), 1) as movement_smoothness,
-               ROUND(AVG(g.time_stationary), 1) as time_stationary,
-               ROUND(AVG(g.caught * 1.0 / (g.caught + g.missed + 0.001)), 3) as catch_rate
-        FROM game_sessions g
-        JOIN users u ON u.id = g.user_id
-        GROUP BY g.user_id
-        ORDER BY best_score DESC
-        LIMIT 50
-      `).all()
+  // ── GET /api/me ─────────────────────────────────────────────────────────────
+  if (path === '/api/me' && method === 'GET') {
+    const user = await getUser(request, env)
+    if (!user) return err('unauthorized', 401)
 
-      return json({ entries: top.results })
-    }
+    const sessions = await env.DB.prepare(`
+      SELECT score, caught, missed, pounces,
+             avg_laser_y, avg_speed, total_laser_dist,
+             movement_frequency, movement_smoothness, time_stationary,
+             played_at
+      FROM game_sessions
+      WHERE user_id = ?
+      ORDER BY played_at DESC
+      LIMIT 50
+    `).bind(user.sub).all()
 
-    // ── POST /api/admin/reset-password ────────────────────────────────────────
-    if (path === '/api/admin/reset-password' && method === 'POST') {
-      const { adminSecret, username, newPassword } = await request.json()
-      if (adminSecret !== env.ADMIN_SECRET) return err('forbidden', 403)
-      if (!username || !newPassword) return err('username and newPassword required')
-      if (newPassword.length < 6) return err('password must be at least 6 characters')
+    return json({ username: user.username, sessions: sessions.results })
+  }
 
-      const user = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(username).first()
-      if (!user) return err('user not found', 404)
+  // ── GET /api/leaderboard ────────────────────────────────────────────────────
+  if (path === '/api/leaderboard' && method === 'GET') {
+    const top = await env.DB.prepare(`
+      SELECT u.username, MAX(g.score) as best_score,
+             COUNT(*) as games_played,
+             ROUND(AVG(g.score), 0) as avg_score,
+             ROUND(AVG(g.avg_laser_y), 1) as avg_laser_y,
+             ROUND(AVG(g.avg_speed), 1) as avg_speed,
+             ROUND(AVG(g.movement_frequency), 3) as movement_frequency,
+             ROUND(AVG(g.movement_smoothness), 1) as movement_smoothness,
+             ROUND(AVG(g.time_stationary), 1) as time_stationary,
+             ROUND(AVG(g.caught * 1.0 / (g.caught + g.missed + 0.001)), 3) as catch_rate
+      FROM game_sessions g
+      JOIN users u ON u.id = g.user_id
+      GROUP BY g.user_id
+      ORDER BY best_score DESC
+      LIMIT 50
+    `).all()
 
-      const password_hash = await hashPassword(newPassword)
-      await env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?')
-        .bind(password_hash, user.id).run()
+    return json({ entries: top.results })
+  }
 
-      return json({ ok: true })
-    }
+  // ── POST /api/admin/reset-password ──────────────────────────────────────────
+  if (path === '/api/admin/reset-password' && method === 'POST') {
+    const { adminSecret, username, newPassword } = await request.json()
+    if (adminSecret !== env.ADMIN_SECRET) return err('forbidden', 403)
+    if (!username || !newPassword) return err('username and newPassword required')
+    if (newPassword.length < 6) return err('password must be at least 6 characters')
 
-    // ── POST /api/cat-response ────────────────────────────────────────────────
-    if (path === '/api/cat-response' && method === 'POST') {
-      const { score, caught, missed, pounces, avgLaserY, avgSpeed,
-              movementFrequency, movementSmoothness } = await request.json()
+    const user = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(username).first()
+    if (!user) return err('user not found', 404)
 
-      // Pull averages from above-median sessions so comparisons are data-driven
-      let topAvg = null
-      try {
-        const count = await env.DB.prepare('SELECT COUNT(*) as n FROM game_sessions').first()
-        if (count.n >= 3) {
-          topAvg = await env.DB.prepare(`
-            SELECT AVG(avg_laser_y)         as laser_y,
-                   AVG(avg_speed)           as speed,
-                   AVG(movement_frequency)  as freq,
-                   AVG(movement_smoothness) as smoothness
-            FROM game_sessions
-            WHERE score >= (SELECT AVG(score) FROM game_sessions)
-          `).first()
-        }
-      } catch {}
+    const password_hash = await hashPassword(newPassword)
+    await env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?')
+      .bind(password_hash, user.id).run()
 
-      // Build natural-language comparison hints for each dimension where
-      // the player meaningfully differs from above-average players.
-      // Claude decides which to mention and how to phrase them — we just
-      // supply the directional facts and keep raw numbers out of the output.
-      const comparisons = []
-      if (topAvg) {
-        const laserDiff = avgLaserY - topAvg.laser_y
-        if (Math.abs(laserDiff) > 30) {
-          comparisons.push(laserDiff > 0
-            ? 'Higher-scoring players tend to keep the laser a bit higher on screen (further from the bottom edge).'
-            : 'Higher-scoring players tend to keep the laser a bit lower on screen (closer to where items land).'
+    return json({ ok: true })
+  }
+
+  // ── POST /api/cat-response ──────────────────────────────────────────────────
+  if (path === '/api/cat-response' && method === 'POST') {
+    const { score, caught, missed, pounces, avgLaserY, avgSpeed,
+            movementFrequency, movementSmoothness } = await request.json()
+
+    // Pull averages from above-median sessions so comparisons are data-driven
+    let topAvg = null
+    try {
+      const count = await env.DB.prepare('SELECT COUNT(*) as n FROM game_sessions').first()
+      if (count.n >= 3) {
+        topAvg = await env.DB.prepare(`
+          SELECT AVG(avg_laser_y)         as laser_y,
+                 AVG(avg_speed)           as speed,
+                 AVG(movement_frequency)  as freq,
+                 AVG(movement_smoothness) as smoothness
+          FROM game_sessions
+          WHERE score >= (SELECT AVG(score) FROM game_sessions)
+        `).first()
+      }
+    } catch {}
+
+    // Build natural-language comparison hints for each dimension where
+    // the player meaningfully differs from above-average players.
+    // Claude decides which to mention and how to phrase them — we just
+    // supply the directional facts and keep raw numbers out of the output.
+    const comparisons = []
+    if (topAvg) {
+      const laserDiff = avgLaserY - topAvg.laser_y
+      if (Math.abs(laserDiff) > 30) {
+        comparisons.push(laserDiff > 0
+          ? 'Higher-scoring players tend to keep the laser a bit higher on screen (further from the bottom edge).'
+          : 'Higher-scoring players tend to keep the laser a bit lower on screen (closer to where items land).'
+        )
+      }
+
+      const speedDiff = avgSpeed - topAvg.speed
+      if (Math.abs(speedDiff) > 30) {
+        comparisons.push(speedDiff < 0
+          ? 'Higher-scoring players tend to move the laser a bit more actively between item spawns.'
+          : 'Higher-scoring players tend to use slower, more deliberate movements rather than fast sweeps.'
+        )
+      }
+
+      if (movementFrequency != null) {
+        const freqDiff = movementFrequency - topAvg.freq
+        if (Math.abs(freqDiff) > 0.1) {
+          comparisons.push(freqDiff < 0
+            ? 'Higher-scoring players keep the laser moving more consistently rather than leaving it still.'
+            : 'Higher-scoring players are more selective about when they move — they hold position more often.'
           )
-        }
-
-        const speedDiff = avgSpeed - topAvg.speed
-        if (Math.abs(speedDiff) > 30) {
-          comparisons.push(speedDiff < 0
-            ? 'Higher-scoring players tend to move the laser a bit more actively between item spawns.'
-            : 'Higher-scoring players tend to use slower, more deliberate movements rather than fast sweeps.'
-          )
-        }
-
-        if (movementFrequency != null) {
-          const freqDiff = movementFrequency - topAvg.freq
-          if (Math.abs(freqDiff) > 0.1) {
-            comparisons.push(freqDiff < 0
-              ? 'Higher-scoring players keep the laser moving more consistently rather than leaving it still.'
-              : 'Higher-scoring players are more selective about when they move — they hold position more often.'
-            )
-          }
-        }
-
-        if (movementSmoothness != null) {
-          const smoothDiff = movementSmoothness - topAvg.smoothness
-          if (Math.abs(smoothDiff) > 3) {
-            comparisons.push(smoothDiff > 0
-              ? 'Higher-scoring players tend to move the laser more smoothly, with fewer sudden direction changes.'
-              : 'Higher-scoring players use more dynamic, varied movements.'
-            )
-          }
         }
       }
 
-      const comparisonBlock = comparisons.length
-        ? `\nHow this player compares to higher-scoring players:\n${comparisons.map(c => `- ${c}`).join('\n')}`
-        : ''
+      if (movementSmoothness != null) {
+        const smoothDiff = movementSmoothness - topAvg.smoothness
+        if (Math.abs(smoothDiff) > 3) {
+          comparisons.push(smoothDiff > 0
+            ? 'Higher-scoring players tend to move the laser more smoothly, with fewer sudden direction changes.'
+            : 'Higher-scoring players use more dynamic, varied movements.'
+          )
+        }
+      }
+    }
 
-      const prompt = `A player just finished a 60-second game of Laser Chase. Here is how the game works:
+    const comparisonBlock = comparisons.length
+      ? `\nHow this player compares to higher-scoring players:\n${comparisons.map(c => `- ${c}`).join('\n')}`
+      : ''
+
+    const prompt = `A player just finished a 60-second game of Laser Chase. Here is how the game works:
 
 - Items (fish, yarn, etc.) fall from the top of the screen toward the bottom
 - The player moves a laser dot to guide a cat to intercept the falling items
@@ -292,29 +364,33 @@ ${comparisonBlock}
 
 Give 2-3 sentences of encouraging, specific coaching. Use the comparison data if present — phrase it conversationally (e.g. "other players tend to hold it a bit higher" not "your Y was 310 vs 240"). Use a cat pun or two naturally, don't force it. Focus on what to do more of.`
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 200,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      })
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 200,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    })
 
-      const data = await response.json()
-      if (!response.ok) {
-        console.error('Anthropic error', response.status, data)
-        return json({ error: `Anthropic API error ${response.status}: ${data.error?.message ?? 'unknown'}` }, 502)
-      }
-      const text = data.content?.[0]?.text ?? 'No advice available.'
-      return new Response(JSON.stringify({ text }), { headers: { 'Content-Type': 'application/json' } })
+    const data = await response.json()
+    if (!response.ok) {
+      console.error('Anthropic error', response.status, data)
+      return json({ error: `Anthropic API error ${response.status}: ${data.error?.message ?? 'unknown'}` }, 502)
     }
+    const text = data.content?.[0]?.text ?? 'No advice available.'
+    return new Response(JSON.stringify({ text }), { headers: { 'Content-Type': 'application/json' } })
+  }
 
-    return env.ASSETS.fetch(request)
-  },
+  // ── Unknown /api/* paths ────────────────────────────────────────────────────
+  if (path.startsWith('/api/')) {
+    return err('not found', 404)
+  }
+
+  return await env.ASSETS.fetch(request)
 }

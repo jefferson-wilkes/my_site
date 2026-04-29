@@ -48,11 +48,11 @@ export default function Profile() {
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    fetch('/api/me', { headers: { Authorization: `Bearer ${auth.token}` } })
+    fetch('/api/me')
       .then(r => r.json())
       .then(setData)
       .catch(() => setError('Could not load profile.'))
-  }, [auth.token])
+  }, [auth.username])
 
   function handleCharacterChange(char) {
     setCharacter(char)

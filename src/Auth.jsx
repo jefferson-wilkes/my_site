@@ -27,7 +27,7 @@ export default function Auth() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error ?? 'Something went wrong'); return }
-      login(data.token, data.username)
+      login(data.username)
     } catch {
       setError('Network error — try again.')
     } finally {

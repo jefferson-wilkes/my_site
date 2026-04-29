@@ -1,22 +1,38 @@
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
+  // Optimistic initial state: read username hint from localStorage (not sensitive).
+  // Background /api/me call confirms or invalidates within ~200ms.
   const [auth, setAuth] = useState(() => {
-    const token = localStorage.getItem('lc_token')
     const username = localStorage.getItem('lc_username')
-    return token && username ? { token, username } : null
+    return username ? { username } : null
   })
 
-  const login = useCallback((token, username) => {
-    localStorage.setItem('lc_token', token)
+  useEffect(() => {
+    fetch('/api/me')
+      .then(r => {
+        if (!r.ok) throw new Error('unauthorized')
+        return r.json()
+      })
+      .then(data => {
+        localStorage.setItem('lc_username', data.username)
+        setAuth({ username: data.username })
+      })
+      .catch(() => {
+        localStorage.removeItem('lc_username')
+        setAuth(null)
+      })
+  }, [])
+
+  const login = useCallback((username) => {
     localStorage.setItem('lc_username', username)
-    setAuth({ token, username })
+    setAuth({ username })
   }, [])
 
   const logout = useCallback(() => {
-    localStorage.removeItem('lc_token')
+    fetch('/api/logout', { method: 'POST' }).catch(() => {})
     localStorage.removeItem('lc_username')
     setAuth(null)
   }, [])

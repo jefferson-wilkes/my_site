@@ -475,17 +475,17 @@ class GameScene extends Phaser.Scene {
 
 // ── GameCanvas ────────────────────────────────────────────────────────────────
 
-function GameCanvas({ character, onGameEnd, token }) {
+function GameCanvas({ character, onGameEnd, loggedIn }) {
   const containerRef = useRef(null)
 
   useEffect(() => {
     activeCharacter = character
     onGameEndCallback = async (stats) => {
       onGameEnd(stats)
-      if (token) {
+      if (loggedIn) {
         fetch('/api/game-session', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(stats),
         }).catch(() => {})
       }
@@ -638,7 +638,7 @@ export default function Game() {
     <div style={{ width: '100%', maxWidth: `${W}px`, margin: '0 auto' }}>
       {playing
         ? <>
-            <GameCanvas character={character} onGameEnd={handleGameEnd} token={auth?.token} />
+            <GameCanvas character={character} onGameEnd={handleGameEnd} loggedIn={!!auth} />
             {gameStats && <HowDidIDo key={gameCount} stats={gameStats} />}
           </>
         : <PlaySplash character={character} onPlay={() => { setGameStats(null); setPlaying(true) }} bestScore={bestScore} />
