@@ -11,7 +11,8 @@ const CAT_OPTIONS = [
   { id: 'cat8',  value: '🐈‍⬛', label: 'Shadow'   },
 ]
 
-const MAX_BYTES = 500 * 1024
+const MAX_PX = 300   // max dimension before downscaling
+const QUALITY = 0.82 // JPEG quality after resize
 
 export default function CharacterPicker({ value, onChange }) {
   const fileRef = useRef(null)
@@ -20,13 +21,23 @@ export default function CharacterPicker({ value, onChange }) {
   function handleUpload(e) {
     const file = e.target.files[0]
     if (!file) return
-    if (file.size > MAX_BYTES) {
-      alert(`Photo must be under 500 KB (yours is ${(file.size / 1024).toFixed(0)} KB).`)
-      e.target.value = ''
-      return
-    }
+    e.target.value = ''
+
     const reader = new FileReader()
-    reader.onload = (ev) => onChange({ type: 'image', src: ev.target.result })
+    reader.onload = (ev) => {
+      const img = new Image()
+      img.onload = () => {
+        const scale = Math.min(MAX_PX / img.width, MAX_PX / img.height, 1)
+        const w = Math.round(img.width * scale)
+        const h = Math.round(img.height * scale)
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+        onChange({ type: 'image', src: canvas.toDataURL('image/jpeg', QUALITY) })
+      }
+      img.src = ev.target.result
+    }
     reader.readAsDataURL(file)
   }
 

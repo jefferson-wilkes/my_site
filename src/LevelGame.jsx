@@ -32,9 +32,20 @@ const LEVELS = [
     startDelay: 1800,
     tutorial: true,
   },
-  { id: 3, name: 'Level 3', subtitle: 'Pick up the pace',   color: '#f59e0b', locked: true },
-  { id: 4, name: 'Level 4', subtitle: 'Things get tricky',  color: '#ef4444', locked: true },
-  { id: 5, name: 'Level 5', subtitle: 'Expert mode',        color: '#9966cc', locked: true },
+  {
+    id: 3,
+    name: 'Level 1',
+    subtitle: 'Schools of fish',
+    color: '#f59e0b',
+    duration: 30,
+    items: [{ emoji: '🐟', pts: 10 }],
+    speedMin: 0.90,
+    speedMax: 1.35,
+    schools: true,
+    startDelay: 1200,
+  },
+  { id: 4, name: 'Level 2', subtitle: 'Things get tricky',  color: '#ef4444', locked: true },
+  { id: 5, name: 'Level 3', subtitle: 'Expert mode',        color: '#9966cc', locked: true },
 ]
 
 // Module-level bridges (same pattern as Game.jsx)
@@ -77,20 +88,34 @@ class LevelScene extends Phaser.Scene {
   create() {
     const cfg = this.cfg = activeLevel
     this.caught = 0
+    this.score = 0
     this.gameOver = false
     this.noiseTime = 0
+    this.timeLeft = cfg.duration ?? null
 
     // Background
     this.add.rectangle(W / 2, H / 2, W, H, 0x0d0d2b)
     // Bottom strip — 90px, matching the demo screen
     this.add.rectangle(W / 2, H - 45, W, 90, 0x111130)
 
-    // Goal counter
-    this.goalTxt = this.add.text(W / 2, 10,
-      `${cfg.items[0].emoji}  0 / ${cfg.goal}`, {
-        fontSize: '20px', fontFamily: 'Courier New',
+    if (cfg.duration) {
+      // Timer-based HUD: score left, timer centre
+      this.scoreTxt = this.add.text(10, 10, 'SCORE: 0', {
+        fontSize: '18px', fontFamily: 'Courier New',
         color: '#4ab0f0', stroke: '#000', strokeThickness: 3,
+      }).setDepth(10)
+      this.timerTxt = this.add.text(W / 2, 10, String(cfg.duration), {
+        fontSize: '18px', fontFamily: 'Courier New',
+        color: '#ffffff', stroke: '#000', strokeThickness: 3,
       }).setOrigin(0.5, 0).setDepth(10)
+    } else {
+      // Catch-goal HUD: item counter
+      this.goalTxt = this.add.text(W / 2, 10,
+        `${cfg.items[0].emoji}  0 / ${cfg.goal}`, {
+          fontSize: '20px', fontFamily: 'Courier New',
+          color: '#4ab0f0', stroke: '#000', strokeThickness: 3,
+        }).setOrigin(0.5, 0).setDepth(10)
+    }
 
     // Laser
     this.laser = this.add.container(W / 2, H / 3)
@@ -140,10 +165,14 @@ class LevelScene extends Phaser.Scene {
     // Items
     this.items = this.add.group()
     this.itemLabels = []
-    this.time.delayedCall(cfg.startDelay ?? 0, () => {
-      this.spawnItem()
-      this.time.addEvent({ delay: cfg.spawnDelay, callback: this.spawnItem, callbackScope: this, loop: true })
-    })
+    if (cfg.schools) {
+      this.time.delayedCall(cfg.startDelay ?? 1000, () => this.spawnSchool())
+    } else {
+      this.time.delayedCall(cfg.startDelay ?? 0, () => {
+        this.spawnItem()
+        this.time.addEvent({ delay: cfg.spawnDelay, callback: this.spawnItem, callbackScope: this, loop: true })
+      })
+    }
 
     // Tutorial overlay — persistent text in the bottom strip
     if (cfg.tutorial) {
@@ -180,17 +209,79 @@ class LevelScene extends Phaser.Scene {
     const x = Phaser.Math.Between(40, W - 40)
     const hitbox = this.add.rectangle(x, -20, 36, 36, 0xffffff, 0)
     hitbox.pts = item.pts
-    hitbox.speed = Phaser.Math.FloatBetween(this.cfg.speedMin, this.cfg.speedMax)
+    const sMin = item.speedMin ?? this.cfg.speedMin
+    const sMax = item.speedMax ?? this.cfg.speedMax
+    hitbox.speed = Phaser.Math.FloatBetween(sMin, sMax)
     this.items.add(hitbox)
     const lbl = this.add.text(x, -20, item.emoji, { fontSize: '30px' }).setOrigin(0.5)
     lbl.hitbox = hitbox
     this.itemLabels.push(lbl)
   }
 
+  // ── School spawner ────────────────────────────────────────────────────────────
+
+  spawnSingleFish(x, y, speed) {
+    if (this.gameOver) return
+    const item = this.cfg.items[0]
+    const hitbox = this.add.rectangle(x, y, 36, 36, 0xffffff, 0)
+    hitbox.pts = item.pts
+    hitbox.speed = speed
+    this.items.add(hitbox)
+    const lbl = this.add.text(x, y, item.emoji, { fontSize: '30px' }).setOrigin(0.5)
+    lbl.hitbox = hitbox
+    this.itemLabels.push(lbl)
+  }
+
+  spawnSchool() {
+    if (this.gameOver) return
+
+    const { speedMin, speedMax } = this.cfg
+    // All fish in a school share a base speed ± tiny variance so they swim together
+    const baseSpeed = Phaser.Math.FloatBetween(speedMin, speedMax)
+    const fish = (x, yOff = 0) => {
+      const s = Phaser.Math.Clamp(baseSpeed + Phaser.Math.FloatBetween(-0.06, 0.06), speedMin, speedMax)
+      this.spawnSingleFish(x, -20 + yOff, s)
+    }
+
+    const roll = Math.random()
+
+    if (roll < 0.55) {
+      // ROW of 3 — evenly spaced, slight y stagger to look natural
+      const margin = 60, gap = (W - margin * 2) / 2
+      for (let i = 0; i < 3; i++) {
+        fish(margin + i * gap, Phaser.Math.Between(-14, 14))
+      }
+    } else if (roll < 0.82) {
+      // WIDE ROW of 4
+      const margin = 55, gap = (W - margin * 2) / 3
+      for (let i = 0; i < 4; i++) {
+        fish(margin + i * gap, Phaser.Math.Between(-14, 14))
+      }
+    } else {
+      // SPLIT — 2 fish on the left, 2 on the right, gap in the middle
+      fish(80,  Phaser.Math.Between(-10, 10))
+      fish(185, Phaser.Math.Between(-10, 10))
+      fish(455, Phaser.Math.Between(-10, 10))
+      fish(560, Phaser.Math.Between(-10, 10))
+    }
+
+    this.scheduleNextSchool()
+  }
+
+  scheduleNextSchool() {
+    if (this.gameOver) return
+    this.time.delayedCall(Phaser.Math.Between(1800, 2800), () => this.spawnSchool())
+  }
+
   catchItem(pts, x, y) {
     this.caught++
-    const remaining = this.cfg.goal - this.caught
-    this.goalTxt.setText(`${this.cfg.items[0].emoji}  ${this.caught} / ${this.cfg.goal}`)
+    this.score += pts
+
+    if (this.scoreTxt) {
+      this.scoreTxt.setText('SCORE: ' + this.score)
+    } else if (this.goalTxt) {
+      this.goalTxt.setText(`${this.cfg.items[0].emoji}  ${this.caught} / ${this.cfg.goal}`)
+    }
 
     const pop = this.add.text(x, y, '+' + pts, {
       fontSize: '20px', fontFamily: 'Courier New',
@@ -203,6 +294,7 @@ class LevelScene extends Phaser.Scene {
 
     // Tutorial message progression
     if (this.cfg.tutorial && this.tutTxt) {
+      const remaining = this.cfg.goal - this.caught
       if (remaining > 0) {
         this.tutTxt.setText(this.caught === 1
           ? `Nice catch! ${remaining} more to go!`
@@ -212,10 +304,11 @@ class LevelScene extends Phaser.Scene {
       }
     }
 
-    if (this.caught >= this.cfg.goal) {
+    // Catch-goal end condition
+    if (this.cfg.goal && this.caught >= this.cfg.goal) {
       this.time.delayedCall(500, () => {
         this.gameOver = true
-        onLevelCompleteCallback?.({ levelId: this.cfg.id })
+        onLevelCompleteCallback?.({ levelId: this.cfg.id, score: this.score })
       })
     }
   }
@@ -224,6 +317,19 @@ class LevelScene extends Phaser.Scene {
     if (this.gameOver) return
     const dt = delta / 1000
     this.noiseTime += dt
+
+    // Timer countdown (duration-based levels)
+    if (this.timeLeft !== null) {
+      this.timeLeft -= dt
+      const secsLeft = Math.ceil(Math.max(0, this.timeLeft))
+      this.timerTxt?.setText(String(secsLeft))
+      this.timerTxt?.setColor(secsLeft <= 10 ? '#ff4444' : '#ffffff')
+      if (this.timeLeft <= 0) {
+        this.gameOver = true
+        onLevelCompleteCallback?.({ levelId: this.cfg.id, score: this.score })
+        return
+      }
+    }
 
     // Tutorial step 0 → 1: detect first laser movement
     if (this.cfg?.tutorial && this.tutStep === 0) {
@@ -838,7 +944,7 @@ function LevelSelect({ onSelect }) {
 
 // ── LevelComplete ─────────────────────────────────────────────────────────────
 
-function LevelComplete({ level, onRetry, onBack }) {
+function LevelComplete({ level, stats, onRetry, onBack }) {
   return (
     <div style={{
       background: '#0d0d2b',
@@ -861,6 +967,11 @@ function LevelComplete({ level, onRetry, onBack }) {
       <p style={{ fontSize: '0.75rem', color: '#8888bb', margin: 0, letterSpacing: '1px' }}>
         {level.name} — {level.subtitle}
       </p>
+      {stats?.score > 0 && (
+        <p style={{ fontSize: '1.1rem', color: '#ffdd00', margin: 0, letterSpacing: '2px' }}>
+          SCORE: {stats.score}
+        </p>
+      )}
       <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
         <ActionBtn color="#4ab0f0" onClick={onRetry}>↩ Retry</ActionBtn>
         <ActionBtn color="#9966cc" onClick={onBack}>★ All Levels</ActionBtn>
@@ -999,6 +1110,7 @@ export default function LevelGame() {
   // phase: 'select' | 'animation-splash' | 'demo' | 'demo-complete' | 'practice-splash' | 'playing' | 'complete'
   const [phase, setPhase] = useState('select')
   const [gameKey, setGameKey] = useState(0)
+  const [completionStats, setCompletionStats] = useState(null)
 
   function handleSelect(level) {
     setSelectedLevel(level)
@@ -1017,7 +1129,7 @@ export default function LevelGame() {
     setGameKey(k => k + 1)
   }
 
-  function handleComplete() { setPhase('complete') }
+  function handleComplete(stats) { setCompletionStats(stats); setPhase('complete') }
 
   function handleRetry() {
     setPhase(selectedLevel.tutorial ? 'practice-splash' : 'playing')
@@ -1037,7 +1149,7 @@ export default function LevelGame() {
       {phase === 'demo-complete'    && <DemoComplete onPlayAgain={handleDemoPlayAgain} onAllLevels={handleBack} />}
       {phase === 'practice-splash'  && <PracticeSplash onReady={handlePracticeReady} />}
       {phase === 'playing'          && <LevelCanvas key={gameKey} level={selectedLevel} onComplete={handleComplete} />}
-      {phase === 'complete'         && <LevelComplete level={selectedLevel} onRetry={handleRetry} onBack={handleBack} />}
+      {phase === 'complete'         && <LevelComplete level={selectedLevel} stats={completionStats} onRetry={handleRetry} onBack={handleBack} />}
     </div>
   )
 }
