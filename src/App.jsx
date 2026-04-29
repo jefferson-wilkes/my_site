@@ -12,7 +12,7 @@ function AppInner() {
   const [emailCopied, setEmailCopied] = useState(false)
 
   function copyEmail() {
-    navigator.clipboard.writeText('jwilkes@mba2027.hbs.edu')
+    navigator.clipboard.writeText('jwgames@tutamail.com')
     setEmailCopied(true)
     setTimeout(() => setEmailCopied(false), 2000)
   }

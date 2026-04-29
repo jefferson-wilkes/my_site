@@ -3,6 +3,47 @@ import Phaser from 'phaser'
 
 const W = 640, H = 480
 
+// ── Bird level tuning constants ───────────────────────────────────────────────
+const BIRD_DWELL_TIME = 3   // seconds each bird sits on a branch before flying — adjust here
+const BIRD_FRAME_W   = 14  // window frame thickness in px
+
+// Branch perch positions in canvas space (640×480).
+// Derived from backyard.png (1402×1122) with scale x=0.457, y=0.428.
+// Adjust x/y values here if a perch doesn't visually sit on a branch.
+const BIRD_PERCHES = [
+  { x:  62, y: 210 },  // left tree  — lower branch
+  { x: 158, y: 108 },  // left tree  — upper branch
+  { x: 238, y:  85 },  // arch       — left section
+  { x: 320, y:  68 },  // arch       — centre peak
+  { x: 400, y:  82 },  // arch       — right section
+  { x: 498, y: 112 },  // right tree — upper branch
+  { x: 538, y: 172 },  // right tree — lower branch
+]
+
+// ── Level high score helpers (localStorage, keyed by level id) ───────────────
+// Scored levels (Level 1): store highest pts.
+// Bird levels (Level 2):   store highest seconds-remaining on a win (more = faster).
+
+function getLevelHS(levelId) {
+  return parseInt(localStorage.getItem(`lc_lvl_hs_${levelId}`) ?? '0', 10)
+}
+function saveLevelHS(levelId, value) {
+  if (value > getLevelHS(levelId)) {
+    localStorage.setItem(`lc_lvl_hs_${levelId}`, String(value))
+    return true  // new high score
+  }
+  return false
+}
+
+// Five birds — spread across perches 0,1,3,5,6 to start well apart
+const BIRDS_CONFIG = [
+  { emoji: '🦜',   startPerch: 0 },  // parrot       — left tree lower
+  { emoji: '🐦‍⬛', startPerch: 1 },  // blackbird    — left tree upper
+  { emoji: '🦅',   startPerch: 3 },  // hawk         — arch centre peak
+  { emoji: '🦆',   startPerch: 5 },  // duck         — right tree upper
+  { emoji: '🐦',   startPerch: 6 },  // generic bird — right tree lower
+]
+
 function getStoredCharacter() {
   try { return JSON.parse(localStorage.getItem('lc_character')) ?? { type: 'emoji', value: '🐱' } }
   catch { return { type: 'emoji', value: '🐱' } }
@@ -34,8 +75,10 @@ const LEVELS = [
   },
   {
     id: 3,
-    name: 'Level 1',
-    subtitle: 'Schools of fish',
+    levelNum: 1,
+    name: 'Schools',
+    subtitle: 'Fish fall in formation!',
+    splashEmoji: '🐟🐟🐟🐟',
     color: '#f59e0b',
     duration: 30,
     items: [{ emoji: '🐟', pts: 10 }],
@@ -44,7 +87,16 @@ const LEVELS = [
     schools: true,
     startDelay: 1200,
   },
-  { id: 4, name: 'Level 2', subtitle: 'Things get tricky',  color: '#ef4444', locked: true },
+  {
+    id: 4,
+    levelNum: 2,
+    name: 'Bird Chase',
+    subtitle: 'Catch all 5 birds!',
+    splashEmoji: '🦜🐦‍⬛🦅🦆🐦',
+    color: '#22c55e',
+    bird: true,
+    duration: 30,
+  },
   { id: 5, name: 'Level 3', subtitle: 'Expert mode',        color: '#9966cc', locked: true },
 ]
 
@@ -825,6 +877,345 @@ function DemoCanvas({ onComplete }) {
   )
 }
 
+// ── BirdScene ─────────────────────────────────────────────────────────────────
+//
+// Three birds (parrot, blackbird, duck) fly independently between branches.
+// Catch all three within 30 seconds to win.
+
+class BirdScene extends Phaser.Scene {
+  constructor() { super('Bird') }
+
+  preload() {
+    this.load.image('backyard', '/backyard.png')
+    this.makeCircleTexture('laser', 14, '#ff0000', '#ff6666')
+    this.makeGlowTexture('glow', 40)
+    if (activeCharacter?.type === 'image') this.load.image('char', activeCharacter.src)
+  }
+
+  makeCircleTexture(key, r, fill, stroke) {
+    const g = this.make.graphics({ x: 0, y: 0, add: false })
+    g.lineStyle(2, Phaser.Display.Color.HexStringToColor(stroke.replace('#', '')).color, 1)
+    g.fillStyle(Phaser.Display.Color.HexStringToColor(fill.replace('#', '')).color, 1)
+    g.fillCircle(r, r, r)
+    g.strokeCircle(r, r, r)
+    g.generateTexture(key, r * 2, r * 2)
+    g.destroy()
+  }
+
+  makeGlowTexture(key, r) {
+    const g = this.make.graphics({ x: 0, y: 0, add: false })
+    for (let i = r; i > 0; i -= 4) {
+      g.fillStyle(0xff0000, (1 - i / r) * 0.3)
+      g.fillCircle(r, r, i)
+    }
+    g.generateTexture(key, r * 2, r * 2)
+    g.destroy()
+  }
+
+  create() {
+    this.gameOver = false
+    this.noiseTime = 0
+    this.timeLeft  = activeLevel.duration
+
+    // Background — stretch to fill canvas exactly
+    this.add.image(W / 2, H / 2, 'backyard').setDisplaySize(W, H).setDepth(0)
+
+    // Window frame — four sides, no crossbar
+    const fw = BIRD_FRAME_W
+    const fc = 0xcec5b0  // warm neutral (window sill colour)
+    ;[
+      [W / 2,      fw / 2,      W,  fw ],  // top
+      [W / 2,      H - fw / 2,  W,  fw ],  // bottom
+      [fw / 2,     H / 2,       fw, H  ],  // left
+      [W - fw / 2, H / 2,       fw, H  ],  // right
+    ].forEach(([x, y, w, h]) =>
+      this.add.rectangle(x, y, w, h, fc, 0.94).setDepth(60)
+    )
+
+    // Subtle glass reflection — two thin diagonal highlights top-left
+    ;[
+      [70, 52, 95, 0.13],
+      [44, 76, 58, 0.08],
+    ].forEach(([x, y, len, a]) => {
+      this.add.rectangle(x, y, len, 3, 0xffffff, a)
+        .setRotation(-Math.PI / 4).setDepth(62)
+    })
+
+    // Timer — sits inside the top frame
+    this.timerTxt = this.add.text(W / 2, fw + 4, String(this.timeLeft), {
+      fontSize: '16px', fontFamily: 'Courier New',
+      color: '#ffffff', stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5, 0).setDepth(65)
+
+    // Caught counter — top right
+    this.caughtTxt = this.add.text(W - fw - 6, fw + 4, `0 / ${BIRDS_CONFIG.length} caught`, {
+      fontSize: '13px', fontFamily: 'Courier New',
+      color: '#ffff88', stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(1, 0).setDepth(65)
+
+    // Three birds — each on their designated starting perch
+    this.perches = BIRD_PERCHES
+    this.birds = BIRDS_CONFIG.map((cfg, i) => {
+      const p = this.perches[cfg.startPerch]
+      return {
+        label:     this.add.text(p.x, p.y, cfg.emoji, { fontSize: '28px' }).setOrigin(0.5).setDepth(10 + i),
+        perchIdx:  cfg.startPerch,
+        flying:    false,
+        caught:    false,
+      }
+    })
+    this.caughtCount = 0
+    // Stagger flight timers so all three don't leave at the same instant
+    this.birds.forEach((b, i) => this.scheduleFlight(i, i * 0.8))
+
+    // Laser
+    this.laser = this.add.container(W / 2, H / 2).setDepth(5)
+    this.laser.add([
+      this.add.image(0, 0, 'glow').setBlendMode('ADD'),
+      this.add.image(0, 0, 'laser'),
+    ])
+    this.trail = Array.from({ length: 8 }, (_, i) =>
+      this.add.circle(0, 0, 4 - i * 0.4, 0xff0000, 0.5 - i * 0.06))
+
+    // Cat
+    this.cat = this.add.container(W / 2, H - 80).setDepth(4)
+    this.faceMaskGfx = null
+    if (activeCharacter?.type === 'image') {
+      const faceSize = 52
+      const src = this.textures.get('char').getSourceImage()
+      const scale = faceSize / Math.min(src.width, src.height)
+      const img = this.add.image(0, 0, 'char').setScale(scale)
+      this.faceMaskGfx = this.make.graphics()
+      this.faceMaskGfx.fillStyle(0xffffff)
+      this.faceMaskGfx.fillCircle(0, 0, faceSize / 2)
+      img.setMask(this.faceMaskGfx.createGeometryMask())
+      this.cat.add(img)
+    } else {
+      this.cat.add(
+        this.add.text(0, 0, activeCharacter?.value ?? '🐱', { fontSize: '36px' }).setOrigin(0.5)
+      )
+    }
+
+    // Cat AI
+    this.catState = 'WATCHING'
+    this.stateTimer = Phaser.Math.FloatBetween(0.8, 1.5)
+    this.laserHistory = []
+    this.stalkWaypoint = { x: this.cat.x, y: this.cat.y }
+    this.stalkMoving = true
+    this.stalkMoveTimer = 0
+    this.stalkPauseTimer = 0
+    this.pounceOrigin = { x: 0, y: 0 }
+    this.pounceTarget = { x: 0, y: 0 }
+    this.pounceProgress = 0
+    this.pounceArcDir = 1
+
+    // Input — constrained inside the frame
+    const pad = fw + 4
+    this.input.on('pointermove', ptr => {
+      if (this.gameOver) return
+      this.laser.x = Phaser.Math.Clamp(ptr.x, pad, W - pad)
+      this.laser.y = Phaser.Math.Clamp(ptr.y, pad, H - pad)
+    })
+    this.input.on('pointerdown', ptr => {
+      if (this.gameOver) return
+      this.laser.x = Phaser.Math.Clamp(ptr.x, pad, W - pad)
+      this.laser.y = Phaser.Math.Clamp(ptr.y, pad, H - pad)
+    })
+  }
+
+  // offsetSec lets us stagger the initial flights so they don't all leave together
+  scheduleFlight(i, offsetSec = 0) {
+    if (this.gameOver || this.birds[i].caught) return
+    this.time.delayedCall((BIRD_DWELL_TIME + offsetSec) * 1000, () => this.flyToNextPerch(i))
+  }
+
+  flyToNextPerch(i) {
+    if (this.gameOver || this.birds[i].caught) return
+    const bird = this.birds[i]
+    bird.flying = true
+
+    // Pick a perch not currently occupied by another bird
+    const occupied = this.birds.filter((b, j) => j !== i && !b.caught).map(b => b.perchIdx)
+    let next, attempts = 0
+    do {
+      next = Phaser.Math.Between(0, this.perches.length - 1)
+      attempts++
+    } while ((next === bird.perchIdx || occupied.includes(next)) && attempts < 20)
+    bird.perchIdx = next
+
+    const target = this.perches[next]
+    const sx = bird.label.x, sy = bird.label.y
+    const dist = Math.abs(target.x - sx)
+    const arcH = Phaser.Math.Clamp(dist * 0.22, 18, 55)
+    const proxy = { t: 0 }
+
+    bird.label.scaleX = target.x < sx ? -1 : 1
+    this.tweens.add({
+      targets: proxy, t: 1,
+      duration: 900 + dist * 0.6,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        const t = proxy.t
+        bird.label.x = sx + (target.x - sx) * t
+        bird.label.y = (sy + (target.y - sy) * t) - Math.sin(t * Math.PI) * arcH
+      },
+      onComplete: () => {
+        bird.flying = false
+        bird.label.setPosition(target.x, target.y)
+        this.scheduleFlight(i)
+      },
+    })
+  }
+
+  update(time, delta) {
+    if (this.gameOver) return
+    const dt = delta / 1000
+    this.noiseTime += dt
+
+    // Timer countdown
+    this.timeLeft -= dt
+    const secsLeft = Math.ceil(Math.max(0, this.timeLeft))
+    this.timerTxt.setText(String(secsLeft))
+    this.timerTxt.setColor(secsLeft <= 10 ? '#ff4444' : '#ffffff')
+    if (this.timeLeft <= 0) {
+      this.gameOver = true
+      onLevelCompleteCallback?.({ levelId: activeLevel.id, caught: false })
+      return
+    }
+
+    // Idle bob for perched birds; catch detection for each uncaught bird
+    this.birds.forEach((bird, i) => {
+      if (bird.caught) return
+
+      if (!bird.flying) {
+        bird.label.y = this.perches[bird.perchIdx].y + Math.sin(this.noiseTime * 2.2 + i * 1.4) * 2
+      }
+
+      if (Phaser.Math.Distance.Between(this.cat.x, this.cat.y, bird.label.x, bird.label.y) < 45) {
+        bird.caught = true
+        this.caughtCount++
+        this.caughtTxt.setText(`${this.caughtCount} / ${this.birds.length} caught`)
+        this.tweens.add({ targets: bird.label, alpha: 0, scaleX: 0, scaleY: 0, duration: 300 })
+        const pop = this.add.text(bird.label.x, bird.label.y, '🎉', { fontSize: '32px' })
+          .setOrigin(0.5).setDepth(25)
+        this.tweens.add({ targets: pop, y: bird.label.y - 60, alpha: 0, duration: 900,
+          onComplete: () => pop.destroy() })
+
+        if (this.caughtCount >= this.birds.length) {
+          this.gameOver = true
+          this.time.delayedCall(600, () =>
+            onLevelCompleteCallback?.({ levelId: activeLevel.id, caught: true, timeLeft: Math.round(this.timeLeft) })
+          )
+        }
+      }
+    })
+
+    // Cat AI
+    this.updateCat(dt)
+
+    // Trail
+    for (let i = this.trail.length - 1; i > 0; i--) {
+      this.trail[i].x = this.trail[i - 1].x
+      this.trail[i].y = this.trail[i - 1].y
+    }
+    this.trail[0].x = this.laser.x
+    this.trail[0].y = this.laser.y
+
+    if (this.faceMaskGfx) this.faceMaskGfx.setPosition(this.cat.x, this.cat.y)
+  }
+
+  updateCat(dt) {
+    const lx = this.laser.x, ly = this.laser.y
+    this.laserHistory.push({ x: lx, y: ly })
+    if (this.laserHistory.length > 90) this.laserHistory.shift()
+    const pad = BIRD_FRAME_W + 5
+
+    if (this.catState === 'WATCHING') {
+      this.stateTimer -= dt
+      this.cat.x += Math.sin(this.noiseTime * 3.7) * 5 * dt
+      this.cat.y += Math.sin(this.noiseTime * 2.3 + 1.4) * 5 * dt
+      this.cat.scaleX = lx < this.cat.x ? -1 : 1
+      if (this.stateTimer <= 0) {
+        this.catState = 'STALKING'
+        this.stateTimer = Phaser.Math.FloatBetween(2, 4.5)
+        this.stalkMoving = true
+        this.stalkMoveTimer = Phaser.Math.FloatBetween(0.5, 1.2)
+        this.birdUpdateWaypoint(lx, ly, pad)
+      }
+    } else if (this.catState === 'STALKING') {
+      this.stateTimer -= dt
+      if (this.stalkMoving) {
+        this.stalkMoveTimer -= dt
+        const dx = this.stalkWaypoint.x - this.cat.x
+        const dy = this.stalkWaypoint.y - this.cat.y
+        const d = Math.sqrt(dx * dx + dy * dy)
+        if (d > 6) {
+          this.cat.x += (dx / d) * 58 * dt
+          this.cat.y += (dy / d) * 58 * dt
+          this.cat.scaleX = dx < 0 ? -1 : 1
+        }
+        if (this.stalkMoveTimer <= 0 || d < 6) {
+          this.stalkMoving = false
+          this.stalkPauseTimer = Phaser.Math.FloatBetween(0.2, 0.7)
+          this.birdUpdateWaypoint(lx, ly, pad)
+        }
+      } else {
+        this.stalkPauseTimer -= dt
+        if (this.stalkPauseTimer <= 0) {
+          this.stalkMoving = true
+          this.stalkMoveTimer = Phaser.Math.FloatBetween(0.5, 1.5)
+        }
+      }
+      if (Phaser.Math.Distance.Between(this.cat.x, this.cat.y, lx, ly) < 180 || this.stateTimer <= 0) {
+        this.catState = 'POUNCING'
+        const cached = this.laserHistory[Math.max(0, this.laserHistory.length - 30)]
+        const dx = cached.x - this.cat.x, dy = cached.y - this.cat.y
+        this.pounceOrigin = { x: this.cat.x, y: this.cat.y }
+        this.pounceTarget = {
+          x: Phaser.Math.Clamp(this.cat.x + dx * 1.25, pad, W - pad),
+          y: Phaser.Math.Clamp(this.cat.y + dy * 1.25, pad, H - pad),
+        }
+        this.pounceProgress = 0
+        this.pounceArcDir = Math.random() > 0.5 ? 1 : -1
+        this.cat.scaleX = dx < 0 ? -1 : 1
+      }
+    } else if (this.catState === 'POUNCING') {
+      this.pounceProgress = Math.min(1, this.pounceProgress + 3.2 * dt)
+      const ease = 1 - Math.pow(1 - this.pounceProgress, 2)
+      const bx = this.pounceOrigin.x + (this.pounceTarget.x - this.pounceOrigin.x) * ease
+      const by = this.pounceOrigin.y + (this.pounceTarget.y - this.pounceOrigin.y) * ease
+      const pdx = this.pounceTarget.x - this.pounceOrigin.x
+      const pdy = this.pounceTarget.y - this.pounceOrigin.y
+      const plen = Math.sqrt(pdx * pdx + pdy * pdy)
+      if (plen > 1) {
+        const arc = Math.sin(this.pounceProgress * Math.PI) * Math.min(plen * 0.18, 45) * this.pounceArcDir
+        this.cat.x = bx + (-pdy / plen) * arc
+        this.cat.y = by + (pdx / plen) * arc
+      } else {
+        this.cat.x = bx; this.cat.y = by
+      }
+      if (this.pounceProgress >= 1) {
+        this.catState = 'WATCHING'
+        this.stateTimer = Phaser.Math.FloatBetween(1, 2.5)
+      }
+    }
+
+    this.cat.x = Phaser.Math.Clamp(this.cat.x, pad, W - pad)
+    this.cat.y = Phaser.Math.Clamp(this.cat.y, pad, H - pad)
+  }
+
+  birdUpdateWaypoint(lx, ly, pad) {
+    const angle = Math.atan2(ly - this.cat.y, lx - this.cat.x)
+    const side = Math.random() > 0.5 ? 1 : -1
+    const dev  = Phaser.Math.FloatBetween(0.4, 1.1)
+    const dist = Phaser.Math.FloatBetween(80, 160)
+    this.stalkWaypoint = {
+      x: Phaser.Math.Clamp(lx + Math.cos(angle + side * dev) * dist, pad + 5, W - pad - 5),
+      y: Phaser.Math.Clamp(ly + Math.sin(angle + side * dev) * dist, pad + 5, H - pad - 5),
+    }
+  }
+}
+
 // ── LevelCanvas ───────────────────────────────────────────────────────────────
 
 function LevelCanvas({ level, onComplete }) {
@@ -840,7 +1231,7 @@ function LevelCanvas({ level, onComplete }) {
       width: W, height: H,
       backgroundColor: '#0d0d2b',
       parent: containerRef.current,
-      scene: LevelScene,
+      scene: level.bird ? BirdScene : LevelScene,
       audio: { noAudio: true },
       scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     })
@@ -899,14 +1290,15 @@ function LevelCard({ level, onSelect }) {
       <span style={{
         fontFamily: "'Courier New', monospace", fontSize: '0.78rem',
         color: locked ? '#44446a' : level.color, letterSpacing: '1px',
+        textAlign: 'center',
       }}>
-        {level.name}
+        {level.levelNum ? `Level ${level.levelNum}` : level.name}
       </span>
       <span style={{
         fontFamily: "'Courier New', monospace", fontSize: '0.58rem',
         color: '#44446a', letterSpacing: '0.5px', textAlign: 'center',
       }}>
-        {locked ? 'Coming soon' : level.subtitle}
+        {locked ? 'Coming soon' : level.levelNum ? level.name : level.subtitle}
       </span>
     </button>
   )
@@ -945,34 +1337,57 @@ function LevelSelect({ onSelect }) {
 // ── LevelComplete ─────────────────────────────────────────────────────────────
 
 function LevelComplete({ level, stats, onRetry, onBack }) {
+  const failed = stats?.caught === false
+
+  // Human-readable score labels
+  const scoreLabel = level.bird
+    ? (stats?.value > 0 ? `${stats.value}s remaining` : null)
+    : (stats?.value > 0 ? `${stats.value} pts` : null)
+  const hsLabel = level.bird
+    ? (stats?.highScore > 0 ? `Best: ${stats.highScore}s remaining` : null)
+    : (stats?.highScore > 0 ? `Best: ${stats.highScore} pts` : null)
+
   return (
     <div style={{
       background: '#0d0d2b',
-      border: `2px solid ${level.color}`,
-      boxShadow: `0 0 30px ${level.color}44`,
+      border: `2px solid ${failed ? '#ef4444' : level.color}`,
+      boxShadow: `0 0 30px ${failed ? '#ef444444' : level.color + '44'}`,
       borderRadius: '4px',
       aspectRatio: `${W} / ${H}`,
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: '16px',
+      gap: '14px',
       fontFamily: "'Courier New', monospace",
       color: '#ccccee',
     }}>
-      <span style={{ fontSize: '4rem' }}>🎉</span>
-      <p style={{ fontSize: '1.3rem', color: level.color, letterSpacing: '3px', margin: 0 }}>
-        LEVEL COMPLETE!
+      <span style={{ fontSize: '4rem' }}>{failed ? '⏰' : '🎉'}</span>
+      <p style={{ fontSize: '1.3rem', color: failed ? '#ef4444' : level.color, letterSpacing: '3px', margin: 0 }}>
+        {failed ? "TIME'S UP!" : 'LEVEL COMPLETE!'}
       </p>
       <p style={{ fontSize: '0.75rem', color: '#8888bb', margin: 0, letterSpacing: '1px' }}>
-        {level.name} — {level.subtitle}
+        {failed
+          ? 'The birds got away — try again!'
+          : level.levelNum
+            ? `Level ${level.levelNum}: ${level.name} — ${level.subtitle}`
+            : `${level.name} — ${level.subtitle}`
+        }
       </p>
-      {stats?.score > 0 && (
+
+      {!failed && scoreLabel && (
         <p style={{ fontSize: '1.1rem', color: '#ffdd00', margin: 0, letterSpacing: '2px' }}>
-          SCORE: {stats.score}
+          {scoreLabel}
         </p>
       )}
-      <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
+
+      {!failed && (
+        stats?.isNewHigh
+          ? <p style={{ fontSize: '0.85rem', color: '#9966cc', margin: 0, letterSpacing: '2px' }}>★ New Best!</p>
+          : hsLabel && <p style={{ fontSize: '0.78rem', color: '#9966cc', margin: 0, letterSpacing: '1px' }}>{hsLabel}</p>
+      )}
+
+      <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
         <ActionBtn color="#4ab0f0" onClick={onRetry}>↩ Retry</ActionBtn>
         <ActionBtn color="#9966cc" onClick={onBack}>★ All Levels</ActionBtn>
       </div>
@@ -1027,6 +1442,59 @@ function DemoComplete({ onPlayAgain, onAllLevels }) {
         <ActionBtn color="#4ab0f0" onClick={onPlayAgain}>▶ Play Again</ActionBtn>
         <ActionBtn color="#9966cc" onClick={onAllLevels}>★ All Levels</ActionBtn>
       </div>
+    </div>
+  )
+}
+
+// ── LevelSplash ───────────────────────────────────────────────────────────────
+// Generic splash for all numbered levels — shows "Level X: Name" + subtitle
+
+function LevelSplash({ level, onReady }) {
+  const hs = getLevelHS(level.id)
+  const hsText = hs > 0
+    ? level.bird ? `Best: ${hs}s remaining` : `Best: ${hs} pts`
+    : 'No record yet'
+
+  useEffect(() => {
+    const t = setTimeout(onReady, 3500)
+    return () => clearTimeout(t)
+  }, [onReady])
+
+  return (
+    <div
+      onClick={onReady}
+      style={{
+        aspectRatio: `${W} / ${H}`,
+        background: '#0d0d2b',
+        border: `2px solid ${level.color}`,
+        boxShadow: `0 0 30px ${level.color}44, inset 0 0 30px ${level.color}11`,
+        borderRadius: '4px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '18px',
+        cursor: 'pointer',
+        fontFamily: "'Courier New', monospace",
+        textAlign: 'center',
+        padding: '0 40px',
+      }}
+    >
+      {level.splashEmoji && (
+        <div style={{ fontSize: '2.2rem', letterSpacing: '8px' }}>{level.splashEmoji}</div>
+      )}
+      <p style={{ fontSize: '1.3rem', color: level.color, letterSpacing: '2px', margin: 0 }}>
+        Level {level.levelNum}: {level.name}
+      </p>
+      <p style={{ fontSize: '0.9rem', color: '#aaaacc', letterSpacing: '1px', margin: 0 }}>
+        {level.subtitle}
+      </p>
+      <p style={{ fontSize: '0.78rem', color: '#9966cc', letterSpacing: '1px', margin: 0 }}>
+        {hsText}
+      </p>
+      <p style={{ fontSize: '0.7rem', color: '#44446a', letterSpacing: '2px', margin: 0 }}>
+        click to start
+      </p>
     </div>
   )
 }
@@ -1107,7 +1575,7 @@ function PracticeSplash({ onReady }) {
 
 export default function LevelGame() {
   const [selectedLevel, setSelectedLevel] = useState(null)
-  // phase: 'select' | 'animation-splash' | 'demo' | 'demo-complete' | 'practice-splash' | 'playing' | 'complete'
+  // phase: 'select' | 'animation-splash' | 'demo' | 'demo-complete' | 'level-splash' | 'practice-splash' | 'playing' | 'complete'
   const [phase, setPhase] = useState('select')
   const [gameKey, setGameKey] = useState(0)
   const [completionStats, setCompletionStats] = useState(null)
@@ -1117,10 +1585,12 @@ export default function LevelGame() {
     setGameKey(k => k + 1)
     if (level.demo)          setPhase('animation-splash')
     else if (level.tutorial) setPhase('practice-splash')
+    else if (level.levelNum) setPhase('level-splash')
     else                     setPhase('playing')
   }
 
   function handleAnimationReady() { setPhase('demo') }
+  function handleLevelSplashReady() { setPhase('playing'); setGameKey(k => k + 1) }
   function handleDemoComplete()   { setPhase('demo-complete') }
   function handleDemoPlayAgain()  { setPhase('demo'); setGameKey(k => k + 1) }
 
@@ -1129,10 +1599,20 @@ export default function LevelGame() {
     setGameKey(k => k + 1)
   }
 
-  function handleComplete(stats) { setCompletionStats(stats); setPhase('complete') }
+  function handleComplete(stats) {
+    // Determine the comparable value: pts for scored levels, seconds-remaining for bird levels
+    const value = selectedLevel.bird
+      ? (stats.caught ? (stats.timeLeft ?? 0) : 0)
+      : (stats.score ?? 0)
+    const isNewHigh = value > 0 && saveLevelHS(selectedLevel.id, value)
+    setCompletionStats({ ...stats, value, isNewHigh, highScore: getLevelHS(selectedLevel.id) })
+    setPhase('complete')
+  }
 
   function handleRetry() {
-    setPhase(selectedLevel.tutorial ? 'practice-splash' : 'playing')
+    if (selectedLevel.tutorial)       setPhase('practice-splash')
+    else if (selectedLevel.levelNum)  setPhase('level-splash')
+    else                              setPhase('playing')
     setGameKey(k => k + 1)
   }
 
@@ -1145,6 +1625,7 @@ export default function LevelGame() {
     <div style={{ width: '100%', maxWidth: `${W}px`, margin: '0 auto' }}>
       {phase === 'select'           && <LevelSelect onSelect={handleSelect} />}
       {phase === 'animation-splash' && <AnimationSplash onReady={handleAnimationReady} />}
+      {phase === 'level-splash'     && <LevelSplash level={selectedLevel} onReady={handleLevelSplashReady} />}
       {phase === 'demo'             && <DemoCanvas key={gameKey} onComplete={handleDemoComplete} />}
       {phase === 'demo-complete'    && <DemoComplete onPlayAgain={handleDemoPlayAgain} onAllLevels={handleBack} />}
       {phase === 'practice-splash'  && <PracticeSplash onReady={handlePracticeReady} />}
