@@ -26,11 +26,11 @@ export default function Leaderboard() {
   return (
     <div style={{ fontFamily: "'Courier New', monospace", color: '#ccccee' }}>
       <h3 style={{ fontSize: '0.7rem', letterSpacing: '3px', color: '#9966cc', textTransform: 'uppercase', marginBottom: '20px' }}>
-        Leaderboard
+        Leaderboard <span style={{ color: '#8888bb', letterSpacing: '1px' }}>(Free Play)</span>
       </h3>
 
       {entries.length === 0 ? (
-        <p style={{ color: '#44446a', fontSize: '0.8rem', textAlign: 'center' }}>No players yet — be the first!</p>
+        <p style={{ color: '#aaaacc', fontSize: '0.8rem', textAlign: 'center' }}>No players yet — be the first!</p>
       ) : (
         <>
           <div style={{ overflowX: 'auto' }}>
@@ -82,8 +82,8 @@ export default function Leaderboard() {
         </>
       )}
 
-      <div style={{ marginTop: '12px', fontSize: '0.6rem', color: '#44446a', lineHeight: 1.8 }}>
-        <strong style={{ color: '#8888bb' }}>Key:</strong>{' '}
+      <div style={{ marginTop: '12px', fontSize: '0.6rem', color: '#aaaacc', lineHeight: 1.8 }}>
+        <strong style={{ color: '#ccccee' }}>Key:</strong>{' '}
         Speed = avg px/s · Freq = % of frames laser moved · Smooth = jitter stddev (lower = smoother)
       </div>
     </div>
@@ -140,7 +140,7 @@ function WhatWorks({ entries }) {
               <td style={td}>{s.label}</td>
               <td style={{ ...td, color: '#ffdd00' }}>{s.topVal}</td>
               <td style={{ ...td, color: '#8888bb' }}>{s.botVal}</td>
-              <td style={{ ...td, color: '#44446a', fontSize: '0.62rem' }}>{s.note}</td>
+              <td style={{ ...td, color: '#aaaacc', fontSize: '0.62rem' }}>{s.note}</td>
             </tr>
           ))}
         </tbody>

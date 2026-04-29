@@ -2,9 +2,19 @@ import { useEffect, useState } from 'react'
 import { useAuth } from './AuthContext.jsx'
 import CharacterPicker from './CharacterSelect.jsx'
 
+function characterKey() {
+  const u = localStorage.getItem('lc_username')
+  return u ? `lc_character_${u}` : 'lc_character'
+}
 function getStoredCharacter() {
   try {
-    return JSON.parse(localStorage.getItem('lc_character')) ?? { type: 'emoji', value: '🐱' }
+    const key = characterKey()
+    const stored = localStorage.getItem(key)
+    if (!stored && key !== 'lc_character') {
+      const old = localStorage.getItem('lc_character')
+      if (old) { localStorage.setItem(key, old); return JSON.parse(old) }
+    }
+    return JSON.parse(stored) ?? { type: 'emoji', value: '🐱' }
   } catch {
     return { type: 'emoji', value: '🐱' }
   }
@@ -46,7 +56,7 @@ export default function Profile() {
 
   function handleCharacterChange(char) {
     setCharacter(char)
-    localStorage.setItem('lc_character', JSON.stringify(char))
+    localStorage.setItem(characterKey(), JSON.stringify(char))
     setSaved(true)
     setTimeout(() => setSaved(false), 1800)
   }
@@ -82,8 +92,11 @@ export default function Profile() {
       </div>
 
       {/* Session history */}
+      <div style={{ fontSize: '0.6rem', letterSpacing: '2px', color: '#8888bb', marginBottom: '10px' }}>
+        FREE PLAY HISTORY
+      </div>
       {sessions.length === 0 ? (
-        <p style={{ color: '#44446a', fontSize: '0.8rem', textAlign: 'center' }}>No games yet — play one!</p>
+        <p style={{ color: '#aaaacc', fontSize: '0.8rem', textAlign: 'center' }}>No games yet — play one!</p>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
@@ -117,8 +130,8 @@ export default function Profile() {
         </div>
       )}
 
-      <div style={{ marginTop: '12px', fontSize: '0.6rem', color: '#44446a', lineHeight: 1.8 }}>
-        <strong style={{ color: '#8888bb' }}>Key:</strong>{' '}
+      <div style={{ marginTop: '12px', fontSize: '0.6rem', color: '#aaaacc', lineHeight: 1.8 }}>
+        <strong style={{ color: '#ccccee' }}>Key:</strong>{' '}
         Speed = avg px/s · Freq = % of frames laser was moving · Smooth = jitter (lower = smoother) · Still = seconds not moving
       </div>
     </div>

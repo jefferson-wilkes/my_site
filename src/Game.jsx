@@ -2,9 +2,20 @@ import { useEffect, useRef, useState } from 'react'
 import Phaser from 'phaser'
 import { useAuth } from './AuthContext.jsx'
 
+function characterKey() {
+  const u = localStorage.getItem('lc_username')
+  return u ? `lc_character_${u}` : 'lc_character'
+}
 function getStoredCharacter() {
   try {
-    return JSON.parse(localStorage.getItem('lc_character')) ?? { type: 'emoji', value: '🐱' }
+    const key = characterKey()
+    const stored = localStorage.getItem(key)
+    // One-time migration: copy old unnamespaced value to user-scoped key
+    if (!stored && key !== 'lc_character') {
+      const old = localStorage.getItem('lc_character')
+      if (old) { localStorage.setItem(key, old); return JSON.parse(old) }
+    }
+    return JSON.parse(stored) ?? { type: 'emoji', value: '🐱' }
   } catch {
     return { type: 'emoji', value: '🐱' }
   }

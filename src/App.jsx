@@ -4,11 +4,12 @@ import LevelGame from './LevelGame.jsx'
 import Auth from './Auth.jsx'
 import Profile from './Profile.jsx'
 import Leaderboard from './Leaderboard.jsx'
+import Guide from './Guide.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 
 function AppInner() {
   const { auth, logout } = useAuth()
-  const [tab, setTab] = useState('play')
+  const [tab, setTab] = useState('levels')
   const [emailCopied, setEmailCopied] = useState(false)
 
   function copyEmail() {
@@ -107,10 +108,11 @@ function AppInner() {
                 marginBottom: '20px',
               }}>
                 {[
-                  { id: 'play',        label: '▶ Free Play'   },
                   { id: 'levels',      label: '★ Levels'       },
+                  { id: 'play',        label: '▶ Free Play'   },
                   { id: 'profile',     label: '👤 Profile'     },
                   { id: 'leaderboard', label: '◈ Leaderboard' },
+                  { id: 'guide',       label: '📖 Guide'       },
                 ].map(t => (
                   <button
                     key={t.id}
@@ -132,24 +134,26 @@ function AppInner() {
                   </button>
                 ))}
                 <div style={{ flex: 1 }} />
-                <span style={{
-                  fontSize: '0.65rem', fontFamily: 'Courier New',
-                  color: '#94a3b8', alignSelf: 'center', paddingRight: '4px'
+                <div style={{
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  padding: '4px 6px', gap: '2px',
                 }}>
-                  {auth.username}
-                </span>
-                <button
-                  onClick={logout}
-                  style={{
-                    background: 'none', border: 'none',
-                    color: '#94a3b8', fontSize: '0.65rem',
-                    fontFamily: 'Courier New', cursor: 'pointer',
-                    padding: '8px 4px',
-                    letterSpacing: '1px',
-                  }}
-                >
-                  sign out
-                </button>
+                  <span style={{ fontSize: '0.62rem', fontFamily: 'Courier New', color: '#94a3b8' }}>
+                    {auth.username}
+                  </span>
+                  <button
+                    onClick={logout}
+                    style={{
+                      background: 'none', border: 'none',
+                      color: '#94a3b8', fontSize: '0.58rem',
+                      fontFamily: 'Courier New', cursor: 'pointer',
+                      padding: '0', letterSpacing: '1px',
+                    }}
+                  >
+                    sign out
+                  </button>
+                </div>
               </div>
 
               {tab === 'play'   && <Game />}
@@ -168,6 +172,14 @@ function AppInner() {
                   borderRadius: '4px', padding: '24px',
                 }}>
                   <Leaderboard />
+                </div>
+              )}
+              {tab === 'guide' && (
+                <div style={{
+                  background: '#0d0d2b', border: '1px solid #2a2a55',
+                  borderRadius: '4px', padding: '24px',
+                }}>
+                  <Guide />
                 </div>
               )}
             </>

@@ -52,7 +52,7 @@ export default function CharacterPicker({ value, onChange }) {
             onClick={() => onChange({ type: 'emoji', value: opt.value })}
           >
             <span style={{ fontSize: '1.8rem', lineHeight: 1 }}>{opt.value}</span>
-            <span style={{ fontSize: '0.55rem', letterSpacing: '1px', color: selected ? '#4ab0f0' : '#44446a' }}>
+            <span style={{ fontSize: '0.55rem', letterSpacing: '1px', color: selected ? '#4ab0f0' : '#aaaacc' }}>
               {opt.label}
             </span>
           </EmojiCard>

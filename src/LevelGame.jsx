@@ -44,9 +44,20 @@ const BIRDS_CONFIG = [
   { emoji: '🐦',   startPerch: 6 },  // generic bird — right tree lower
 ]
 
+function characterKey() {
+  const u = localStorage.getItem('lc_username')
+  return u ? `lc_character_${u}` : 'lc_character'
+}
 function getStoredCharacter() {
-  try { return JSON.parse(localStorage.getItem('lc_character')) ?? { type: 'emoji', value: '🐱' } }
-  catch { return { type: 'emoji', value: '🐱' } }
+  try {
+    const key = characterKey()
+    const stored = localStorage.getItem(key)
+    if (!stored && key !== 'lc_character') {
+      const old = localStorage.getItem('lc_character')
+      if (old) { localStorage.setItem(key, old); return JSON.parse(old) }
+    }
+    return JSON.parse(stored) ?? { type: 'emoji', value: '🐱' }
+  } catch { return { type: 'emoji', value: '🐱' } }
 }
 
 // ── Level definitions ─────────────────────────────────────────────────────────
@@ -1296,7 +1307,7 @@ function LevelCard({ level, onSelect }) {
       </span>
       <span style={{
         fontFamily: "'Courier New', monospace", fontSize: '0.58rem',
-        color: '#44446a', letterSpacing: '0.5px', textAlign: 'center',
+        color: '#aaaacc', letterSpacing: '0.5px', textAlign: 'center',
       }}>
         {locked ? 'Coming soon' : level.levelNum ? level.name : level.subtitle}
       </span>
@@ -1336,8 +1347,10 @@ function LevelSelect({ onSelect }) {
 
 // ── LevelComplete ─────────────────────────────────────────────────────────────
 
-function LevelComplete({ level, stats, onRetry, onBack }) {
+function LevelComplete({ level, stats, onRetry, onBack, onNextLevel }) {
   const failed = stats?.caught === false
+  const currentIdx = LEVELS.findIndex(l => l.id === level.id)
+  const nextLevel = !failed && LEVELS.slice(currentIdx + 1).find(l => !l.locked && !l.demo)
 
   // Human-readable score labels
   const scoreLabel = level.bird
@@ -1387,8 +1400,13 @@ function LevelComplete({ level, stats, onRetry, onBack }) {
           : hsLabel && <p style={{ fontSize: '0.78rem', color: '#9966cc', margin: 0, letterSpacing: '1px' }}>{hsLabel}</p>
       )}
 
-      <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+      <div style={{ display: 'flex', gap: '12px', marginTop: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
         <ActionBtn color="#4ab0f0" onClick={onRetry}>↩ Retry</ActionBtn>
+        {nextLevel && (
+          <ActionBtn color={nextLevel.color} onClick={() => onNextLevel(nextLevel)}>
+            Next Level ▶
+          </ActionBtn>
+        )}
         <ActionBtn color="#9966cc" onClick={onBack}>★ All Levels</ActionBtn>
       </div>
     </div>
@@ -1423,7 +1441,8 @@ function ActionBtn({ color, onClick, children }) {
 
 // ── DemoComplete ──────────────────────────────────────────────────────────────
 
-function DemoComplete({ onPlayAgain, onAllLevels }) {
+function DemoComplete({ onPlayAgain, onTutorial, onAllLevels }) {
+  const tutorialLevel = LEVELS.find(l => l.tutorial)
   return (
     <div style={{
       aspectRatio: `${W} / ${H}`,
@@ -1438,8 +1457,11 @@ function DemoComplete({ onPlayAgain, onAllLevels }) {
       gap: '24px',
       fontFamily: "'Courier New', monospace",
     }}>
-      <div style={{ display: 'flex', gap: '16px' }}>
+      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
         <ActionBtn color="#4ab0f0" onClick={onPlayAgain}>▶ Play Again</ActionBtn>
+        {tutorialLevel && (
+          <ActionBtn color={tutorialLevel.color} onClick={onTutorial}>★ Tutorial</ActionBtn>
+        )}
         <ActionBtn color="#9966cc" onClick={onAllLevels}>★ All Levels</ActionBtn>
       </div>
     </div>
@@ -1627,10 +1649,10 @@ export default function LevelGame() {
       {phase === 'animation-splash' && <AnimationSplash onReady={handleAnimationReady} />}
       {phase === 'level-splash'     && <LevelSplash level={selectedLevel} onReady={handleLevelSplashReady} />}
       {phase === 'demo'             && <DemoCanvas key={gameKey} onComplete={handleDemoComplete} />}
-      {phase === 'demo-complete'    && <DemoComplete onPlayAgain={handleDemoPlayAgain} onAllLevels={handleBack} />}
+      {phase === 'demo-complete'    && <DemoComplete onPlayAgain={handleDemoPlayAgain} onTutorial={() => handleSelect(LEVELS.find(l => l.tutorial))} onAllLevels={handleBack} />}
       {phase === 'practice-splash'  && <PracticeSplash onReady={handlePracticeReady} />}
       {phase === 'playing'          && <LevelCanvas key={gameKey} level={selectedLevel} onComplete={handleComplete} />}
-      {phase === 'complete'         && <LevelComplete level={selectedLevel} stats={completionStats} onRetry={handleRetry} onBack={handleBack} />}
+      {phase === 'complete'         && <LevelComplete level={selectedLevel} stats={completionStats} onRetry={handleRetry} onBack={handleBack} onNextLevel={handleSelect} />}
     </div>
   )
 }
