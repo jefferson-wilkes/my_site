@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { useAuth } from './AuthContext.jsx'
 
 const dark = {
-  background: '#0d0d2b',
+  background: 'transparent',
   fontFamily: "'Courier New', monospace",
   color: '#ccccee',
 }
 
-export default function Auth() {
+export default function Auth({ onSuccess }) {
   const { login } = useAuth()
   const [tab, setTab] = useState('login')
   const [username, setUsername] = useState('')
@@ -28,6 +28,7 @@ export default function Auth() {
       const data = await res.json()
       if (!res.ok) { setError(data.error ?? 'Something went wrong'); return }
       login(data.username)
+      onSuccess?.(tab === 'login' ? 'levels' : 'profile')
     } catch {
       setError('Network error — try again.')
     } finally {
@@ -103,7 +104,7 @@ export default function Auth() {
           disabled={loading || !username || !password}
           style={{
             marginTop: '4px',
-            background: loading ? '#1a1a3e' : '#4ab0f018',
+            background: loading ? 'rgba(26, 26, 62, 0.5)' : 'rgba(74, 176, 240, 0.08)',
             border: `2px solid ${accent}`,
             boxShadow: loading ? 'none' : `0 0 14px ${accent}33`,
             borderRadius: '6px',
@@ -120,7 +121,7 @@ export default function Auth() {
       </form>
 
       {tab === 'register' && (
-        <p style={{ marginTop: '16px', fontSize: '0.65rem', color: '#44446a', lineHeight: 1.6 }}>
+        <p style={{ marginTop: '16px', fontSize: '0.65rem', color: '#8888bb', lineHeight: 1.6 }}>
           Username: 2–24 characters, letters/numbers/underscores only.<br />
           Password: 6 characters minimum.
         </p>
@@ -131,7 +132,7 @@ export default function Auth() {
 
 const inputStyle = {
   width: '100%',
-  background: '#0a0a20',
+  background: 'rgba(10, 10, 32, 0.45)',
   border: '1px solid #2a2a55',
   borderRadius: '4px',
   padding: '9px 12px',

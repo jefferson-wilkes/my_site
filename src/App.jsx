@@ -5,6 +5,7 @@ import Auth from './Auth.jsx'
 import Profile from './Profile.jsx'
 import Leaderboard from './Leaderboard.jsx'
 import Guide from './Guide.jsx'
+import DemoBackground from './DemoBackground.jsx'
 import { AuthProvider, useAuth } from './AuthContext.jsx'
 
 function AppInner() {
@@ -39,9 +40,6 @@ function AppInner() {
             <img src="/cat-black.jpg" alt="Black cat" className="w-full h-full object-cover" />
           </div>
         </div>
-        <p className="mt-4 text-sm text-slate-400" style={{fontFamily: "'Fredoka', cursive", letterSpacing: '0.08em'}}>
-          A cat laser game with AI coaching and competitive leaderboards — built with React, Phaser 3 &amp; Cloudflare
-        </p>
       </header>
 
       {/* Links bar */}
@@ -88,18 +86,22 @@ function AppInner() {
           <h2 className="text-xl font-medium tracking-widest uppercase mb-4 text-center" style={{fontFamily: "'Fredoka', cursive", color: '#cc0000', letterSpacing: '0.2em'}}>Laser Chase</h2>
 
           {!auth ? (
-            /* Not logged in — show auth form inside game frame */
+            /* Not logged in — demo plays inside the box, auth form floats on top */
             <div style={{
+              position: 'relative',
               border: '2px solid #4ab0f0',
               boxShadow: '0 0 30px #4ab0f044, inset 0 0 30px #4ab0f011',
               borderRadius: '4px',
-              background: '#0d0d2b',
+              overflow: 'hidden',
+              minHeight: '520px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '40px 20px',
             }}>
-              <Auth />
+              <DemoBackground />
+              <div style={{ position: 'relative', zIndex: 1, width: '100%', padding: '40px 20px' }}>
+                <Auth onSuccess={setTab} />
+              </div>
             </div>
           ) : (
             <>
@@ -190,7 +192,7 @@ function AppInner() {
         </section>
       </main>
 
-      <footer className="border-t border-slate-200 text-center text-xs text-slate-400 py-5" style={{fontFamily: "'Fredoka', cursive", letterSpacing: '0.08em'}}>
+      <footer className={`text-center text-xs py-5 ${auth ? 'border-t border-slate-200 text-slate-400' : 'text-slate-500'}`} style={{fontFamily: "'Fredoka', cursive", letterSpacing: '0.08em'}}>
         &copy; {new Date().getFullYear()} Jefferson Wilkes &nbsp;·&nbsp; v2.4.0
       </footer>
 
