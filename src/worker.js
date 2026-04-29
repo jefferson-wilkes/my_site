@@ -123,6 +123,7 @@ export default {
     const url = new URL(request.url)
     const isLocalDev = url.hostname === 'localhost'
     const response = await handle(request, env, url, isLocalDev)
+      ?? await env.ASSETS.fetch(request)
     return withSecurityHeaders(response, isLocalDev)
   },
 }
@@ -392,5 +393,5 @@ Give 2-3 sentences of encouraging, specific coaching. Use the comparison data if
     return err('not found', 404)
   }
 
-  return await env.ASSETS.fetch(request)
+  return null // fall through to env.ASSETS in top-level handler
 }

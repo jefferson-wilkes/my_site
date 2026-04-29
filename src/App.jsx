@@ -39,6 +39,9 @@ function AppInner() {
             <img src="/cat-black.jpg" alt="Black cat" className="w-full h-full object-cover" />
           </div>
         </div>
+        <p className="mt-4 text-sm text-slate-400" style={{fontFamily: "'Fredoka', cursive", letterSpacing: '0.08em'}}>
+          A cat laser game with AI coaching and competitive leaderboards — built with React, Phaser 3 &amp; Cloudflare
+        </p>
       </header>
 
       {/* Links bar */}
@@ -188,7 +191,7 @@ function AppInner() {
       </main>
 
       <footer className="border-t border-slate-200 text-center text-xs text-slate-400 py-5" style={{fontFamily: "'Fredoka', cursive", letterSpacing: '0.08em'}}>
-        &copy; {new Date().getFullYear()} Jefferson Wilkes &nbsp;·&nbsp; v2.0.0
+        &copy; {new Date().getFullYear()} Jefferson Wilkes &nbsp;·&nbsp; v2.4.0
       </footer>
 
     </div>
