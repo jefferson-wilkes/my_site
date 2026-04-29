@@ -1,7 +1,13 @@
 import { useState } from 'react'
 import Game from './Game.jsx'
+import Auth from './Auth.jsx'
+import Profile from './Profile.jsx'
+import Leaderboard from './Leaderboard.jsx'
+import { AuthProvider, useAuth } from './AuthContext.jsx'
 
-function App() {
+function AppInner() {
+  const { auth, logout } = useAuth()
+  const [tab, setTab] = useState('play')
   const [emailCopied, setEmailCopied] = useState(false)
 
   function copyEmail() {
@@ -73,20 +79,112 @@ function App() {
       </nav>
 
       <main className="flex-1 w-full max-w-2xl mx-auto px-6 py-12">
-
-        {/* Game */}
         <section>
           <h2 className="text-xl font-medium tracking-widest uppercase mb-4 text-center" style={{fontFamily: "'Fredoka', cursive", color: '#cc0000', letterSpacing: '0.2em'}}>Laser Chase</h2>
-          <Game />
-        </section>
 
+          {!auth ? (
+            /* Not logged in — show auth form inside game frame */
+            <div style={{
+              border: '2px solid #4ab0f0',
+              boxShadow: '0 0 30px #4ab0f044, inset 0 0 30px #4ab0f011',
+              borderRadius: '4px',
+              background: '#0d0d2b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '40px 20px',
+            }}>
+              <Auth />
+            </div>
+          ) : (
+            <>
+              {/* Tab bar */}
+              <div style={{
+                display: 'flex',
+                gap: '0',
+                borderBottom: '1px solid #e2e8f0',
+                marginBottom: '20px',
+              }}>
+                {[
+                  { id: 'play', label: '▶ Play' },
+                  { id: 'profile', label: '👤 Profile' },
+                  { id: 'leaderboard', label: '★ Leaderboard' },
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      borderBottom: tab === t.id ? '2px solid #cc0000' : '2px solid transparent',
+                      color: tab === t.id ? '#cc0000' : '#94a3b8',
+                      padding: '8px 16px 10px',
+                      fontSize: '0.8rem',
+                      fontFamily: "'Fredoka', cursive",
+                      letterSpacing: '0.05em',
+                      cursor: 'pointer',
+                      marginBottom: '-1px',
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+                <div style={{ flex: 1 }} />
+                <span style={{
+                  fontSize: '0.65rem', fontFamily: 'Courier New',
+                  color: '#94a3b8', alignSelf: 'center', paddingRight: '4px'
+                }}>
+                  {auth.username}
+                </span>
+                <button
+                  onClick={logout}
+                  style={{
+                    background: 'none', border: 'none',
+                    color: '#94a3b8', fontSize: '0.65rem',
+                    fontFamily: 'Courier New', cursor: 'pointer',
+                    padding: '8px 4px',
+                    letterSpacing: '1px',
+                  }}
+                >
+                  sign out
+                </button>
+              </div>
+
+              {tab === 'play' && <Game />}
+              {tab === 'profile' && (
+                <div style={{
+                  background: '#0d0d2b', border: '1px solid #2a2a55',
+                  borderRadius: '4px', padding: '24px',
+                }}>
+                  <Profile />
+                </div>
+              )}
+              {tab === 'leaderboard' && (
+                <div style={{
+                  background: '#0d0d2b', border: '1px solid #2a2a55',
+                  borderRadius: '4px', padding: '24px',
+                }}>
+                  <Leaderboard />
+                </div>
+              )}
+            </>
+          )}
+        </section>
       </main>
 
       <footer className="border-t border-slate-200 text-center text-xs text-slate-400 py-5" style={{fontFamily: "'Fredoka', cursive", letterSpacing: '0.08em'}}>
-        &copy; {new Date().getFullYear()} Jefferson Wilkes &nbsp;·&nbsp; v1.7.0
+        &copy; {new Date().getFullYear()} Jefferson Wilkes &nbsp;·&nbsp; v2.0.0
       </footer>
 
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppInner />
+    </AuthProvider>
   )
 }
 
@@ -114,5 +212,3 @@ function EmailIcon() {
     </svg>
   )
 }
-
-export default App

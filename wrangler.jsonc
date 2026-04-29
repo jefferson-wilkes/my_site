@@ -11,5 +11,12 @@
   },
   "compatibility_flags": [
     "nodejs_compat"
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "laser-chase-db",
+      "database_id": "9ad2215b-ac80-45ba-9458-735102ea9bd8"
+    }
   ]
 }

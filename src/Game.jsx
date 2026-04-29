@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import Phaser from 'phaser'
-import CharacterSelect from './CharacterSelect.jsx'
+import { useAuth } from './AuthContext.jsx'
+
+function getStoredCharacter() {
+  try {
+    return JSON.parse(localStorage.getItem('lc_character')) ?? { type: 'emoji', value: '🐱' }
+  } catch {
+    return { type: 'emoji', value: '🐱' }
+  }
+}
 
 const W = 640, H = 480
 
@@ -67,6 +75,13 @@ class GameScene extends Phaser.Scene {
     this.totalLaserDist = 0
     this.prevLaserX = W / 2
     this.prevLaserY = H / 2
+
+    // New instrumentation
+    this.movingFrames = 0        // frames where laser moved > 1px
+    this.stationaryTime = 0      // seconds laser didn't move
+    this.dispSum = 0             // sum of per-frame displacement (for smoothness stddev)
+    this.dispSumSq = 0           // sum of squares
+    this.prevDisp = 0
 
     this.scoreTxt = this.add.text(10, 10, 'SCORE: 0', {
       fontSize: '18px', fontFamily: 'Courier New',
@@ -199,11 +214,21 @@ class GameScene extends Phaser.Scene {
 
     const ldx = this.laser.x - this.prevLaserX
     const ldy = this.laser.y - this.prevLaserY
-    this.totalLaserDist += Math.sqrt(ldx * ldx + ldy * ldy)
+    const disp = Math.sqrt(ldx * ldx + ldy * ldy)
+    this.totalLaserDist += disp
     this.prevLaserX = this.laser.x
     this.prevLaserY = this.laser.y
     this.laserYSum += this.laser.y
     this.laserFrames++
+
+    // Instrumentation
+    if (disp > 1) {
+      this.movingFrames++
+    } else {
+      this.stationaryTime += delta / 1000
+    }
+    this.dispSum += disp
+    this.dispSumSq += disp * disp
 
     for (let i = this.trail.length - 1; i > 0; i--) {
       this.trail[i].x = this.trail[i - 1].x
@@ -376,13 +401,22 @@ class GameScene extends Phaser.Scene {
     this.gameOver = true
 
     if (onGameEndCallback) {
+      const n = this.laserFrames
+      const mean = n > 0 ? this.dispSum / n : 0
+      const variance = n > 1 ? (this.dispSumSq / n - mean * mean) : 0
+      const smoothness = Math.round(Math.sqrt(Math.max(0, variance)) * 10) / 10
+
       onGameEndCallback({
         score: this.score,
         caught: this.caught,
         missed: this.missed,
         pounces: this.pounces,
-        avgLaserY: this.laserFrames > 0 ? Math.round(this.laserYSum / this.laserFrames) : H / 2,
-        avgSpeed: this.laserFrames > 0 ? Math.round((this.totalLaserDist / this.laserFrames) * 60) : 0,
+        avgLaserY: n > 0 ? Math.round(this.laserYSum / n) : H / 2,
+        avgSpeed: n > 0 ? Math.round((this.totalLaserDist / n) * 60) : 0,
+        totalLaserDist: Math.round(this.totalLaserDist),
+        movementFrequency: n > 0 ? Math.round((this.movingFrames / n) * 1000) / 1000 : 0,
+        movementSmoothness: smoothness,
+        timeStationary: Math.round(this.stationaryTime * 10) / 10,
       })
     }
 
@@ -430,11 +464,21 @@ class GameScene extends Phaser.Scene {
 
 // ── GameCanvas ────────────────────────────────────────────────────────────────
 
-function GameCanvas({ onChangeCharacter, onGameEnd }) {
+function GameCanvas({ character, onGameEnd, token }) {
   const containerRef = useRef(null)
 
   useEffect(() => {
-    onGameEndCallback = onGameEnd
+    activeCharacter = character
+    onGameEndCallback = async (stats) => {
+      onGameEnd(stats)
+      if (token) {
+        fetch('/api/game-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(stats),
+        }).catch(() => {})
+      }
+    }
     const game = new Phaser.Game({
       type: Phaser.AUTO,
       width: W,
@@ -453,17 +497,9 @@ function GameCanvas({ onChangeCharacter, onGameEnd }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-slate-400 font-mono tracking-wide">
-          Touch or drag to move laser · Collect items!
-        </p>
-        <button
-          onClick={onChangeCharacter}
-          className="text-xs text-slate-400 hover:text-slate-600 font-mono underline underline-offset-2 cursor-pointer"
-        >
-          ↩ Change character
-        </button>
-      </div>
+      <p className="text-xs text-slate-400 font-mono tracking-wide mb-3">
+        Touch or drag to move laser · Collect items!
+      </p>
       <div
         ref={containerRef}
         style={{
@@ -495,8 +531,11 @@ function HowDidIDo({ stats }) {
       body: JSON.stringify(stats),
     })
       .then(res => res.json())
-      .then(data => setAdvice(data.text))
-      .catch(() => setError('Could not load advice.'))
+      .then(data => {
+        if (data.error) setError(data.error)
+        else setAdvice(data.text)
+      })
+      .catch(() => setError('Could not reach the advice endpoint.'))
   }, [])
 
   return (
@@ -516,51 +555,82 @@ function HowDidIDo({ stats }) {
   )
 }
 
+// ── PlaySplash ────────────────────────────────────────────────────────────────
+
+function PlaySplash({ character, onPlay, bestScore }) {
+  return (
+    <div style={{
+      aspectRatio: `${W} / ${H}`,
+      border: '2px solid #22c55e',
+      boxShadow: '0 0 30px #22c55e44, inset 0 0 30px #22c55e11',
+      borderRadius: '4px',
+      background: '#0d0d2b',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: '24px',
+    }}>
+      {character?.type === 'image' ? (
+        <img
+          src={character.src}
+          alt="Your character"
+          style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', border: '3px solid #22c55e', boxShadow: '0 0 20px #22c55e44' }}
+        />
+      ) : (
+        <span style={{ fontSize: '5rem', lineHeight: 1 }}>{character?.value ?? '🐱'}</span>
+      )}
+
+      <button
+        onClick={onPlay}
+        style={{
+          background: '#22c55e18',
+          border: '2px solid #22c55e',
+          boxShadow: '0 0 24px #22c55e44',
+          borderRadius: '8px',
+          padding: '14px 60px',
+          color: '#ffffff',
+          fontSize: '1.1rem',
+          fontFamily: "'Courier New', monospace",
+          letterSpacing: '4px',
+          cursor: 'pointer',
+        }}
+      >
+        ▶ PLAY
+      </button>
+
+      {bestScore > 0 && (
+        <p style={{ fontFamily: "'Courier New', monospace", fontSize: '0.75rem', color: '#9966cc', letterSpacing: '2px' }}>
+          BEST: {bestScore}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ── Game (main export) ────────────────────────────────────────────────────────
 
 export default function Game() {
-  const [character, setCharacter] = useState(null)
+  const { auth } = useAuth()
+  const [playing, setPlaying] = useState(false)
   const [gameStats, setGameStats] = useState(null)
   const [gameCount, setGameCount] = useState(0)
-
-  function handleStart(char) {
-    activeCharacter = char
-    setGameStats(null)
-    setCharacter(char)
-  }
+  const character = getStoredCharacter()
+  const bestScore = parseInt(localStorage.getItem('laserChaseHighScore') ?? '0', 10)
 
   function handleGameEnd(stats) {
     setGameStats(stats)
     setGameCount(c => c + 1)
   }
 
-  function handleChangeCharacter() {
-    activeCharacter = null
-    setCharacter(null)
-    setGameStats(null)
-  }
-
   return (
     <div style={{ width: '100%', maxWidth: `${W}px`, margin: '0 auto' }}>
-      {!character
-        ? (
-          <div style={{
-            aspectRatio: `${W} / ${H}`,
-            border: '2px solid #4ab0f0',
-            boxShadow: '0 0 30px #4ab0f044, inset 0 0 30px #4ab0f011',
-            borderRadius: '4px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: '#0d0d2b',
-          }}>
-            <CharacterSelect onStart={handleStart} />
-          </div>
-        )
-        : <>
-            <GameCanvas onChangeCharacter={handleChangeCharacter} onGameEnd={handleGameEnd} />
+      {playing
+        ? <>
+            <GameCanvas character={character} onGameEnd={handleGameEnd} token={auth?.token} />
             {gameStats && <HowDidIDo key={gameCount} stats={gameStats} />}
           </>
+        : <PlaySplash character={character} onPlay={() => { setGameStats(null); setPlaying(true) }} bestScore={bestScore} />
       }
     </div>
   )
